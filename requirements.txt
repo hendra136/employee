@@ -1,10 +1,6 @@
 streamlit
-pandas
-plotly
 supabase
+openrouter-client
+pandas
 matplotlib
 seaborn
-sqlalchemy
-psycopg2-binary
-numpy
-openrouter-client
