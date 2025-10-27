@@ -1,7 +1,7 @@
 streamlit
 pandas
 plotly
-supabase-py==2.4.0
+supabase
 matplotlib
 seaborn
 sqlalchemy
