@@ -51,15 +51,24 @@ st.write("Aplikasi ini membantu menemukan talenta internal yang cocok dengan pro
 @st.cache_data(ttl=3600) # Cache selama 1 jam
 def get_employee_list():
     try:
-        response = supabase.table('employees').select('employee_id, fullname').execute()
-        if response.data:
-             # Sort dictionary by employee name (value)
+        st.info("DEBUG: Mengambil data dari tabel 'employees'...")
+        response = supabase.table('employees').select('employee_id, fullname').limit(5).execute()
+        
+        # Tampilkan hasil response mentah
+        st.write("🔍 DEBUG RAW RESPONSE:", response)
+        
+        if hasattr(response, 'data') and response.data:
+            st.success(f"✅ Berhasil ambil {len(response.data)} baris pertama.")
+            st.write("Contoh data:", response.data[:3])
             sorted_employees = sorted(response.data, key=lambda x: x['fullname'])
             return {emp['employee_id']: emp['fullname'] for emp in sorted_employees}
-        return {}
+        else:
+            st.error("⚠️ Tidak ada data dikembalikan dari tabel 'employees'. Mungkin RLS atau koneksi?")
+            return {}
     except Exception as e:
-        st.error(f"Error mengambil daftar karyawan: {e}")
+        st.error(f"❌ DEBUG ERROR saat mengambil data dari Supabase: {e}")
         return {}
+
 
 employee_dict = get_employee_list()
 if not employee_dict:
