@@ -156,7 +156,11 @@ if submit_button:
                 df_ranked_list = df_results.drop_duplicates(subset=['employee_id']).sort_values(
                     by="final_match_rate", ascending=False, na_position='last'
                 )
-                
+
+                # --- TAMBAHKAN DEBUG INI ---
+                st.write("DEBUG: Kolom di df_ranked_list:", df_ranked_list.columns.tolist())
+                # --- BATAS DEBUG ---
+    
                 # Periksa nama kolom 'position_name' 
                 if 'position_name' not in df_ranked_list.columns:
                     st.error("Kolom 'position_name' tidak ditemukan dalam hasil kueri. Periksa function SQL.")
