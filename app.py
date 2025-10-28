@@ -1,7 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client as SupabaseClient
 import pandas as pd
-from openrouter import OpenRouter # Kembali ke import asli
+# HAPUS: from openrouter import OpenRouter 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -11,9 +11,9 @@ import seaborn as sns
 
 # Ambil kunci dari file secrets.toml
 try:
-    SUPABASE_URL = st.secrets["https://yrlqlzvhtyyzlcasviij.supabase.co"]
-    SUPABASE_KEY = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlybHFsenZodHl5emxjYXN2aWlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1NTIwNDcsImV4cCI6MjA3NzEyODA0N30.a2zQkdOQYVt-EFnCt-jd20ygwn2048lb-Mtgpe-t4uw"]
-    OPENROUTER_KEY = st.secrets["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"]
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    # HAPUS: OPENROUTER_KEY = st.secrets["OPENROUTER_KEY"] 
 except KeyError as e:
     st.error(f"Error: Kunci '{e}' tidak ditemukan di file .streamlit/secrets.toml. Pastikan file ada dan nama kunci benar (huruf besar).")
     st.stop()
@@ -28,14 +28,14 @@ except Exception as e:
     st.error(f"Gagal terhubung ke Supabase: {e}")
     st.stop()
 
-# Buat koneksi ke AI
-client_ai = None # Default ke None
-try:
-    client_ai = OpenRouter(api_key=OPENROUTER_KEY)
-except NameError:
-    st.warning("Library 'OpenRouter' tidak bisa diimpor. Fitur AI tidak akan aktif.")
-except Exception as e:
-    st.warning(f"Gagal terhubung ke OpenRouter: {e}. Fitur AI tidak akan aktif.")
+# HAPUS BAGIAN KONEKSI AI
+# client_ai = None 
+# try:
+#     client_ai = OpenRouter(api_key=OPENROUTER_KEY)
+# except NameError:
+#      st.warning("Library 'OpenRouter' tidak bisa diimpor. Fitur AI tidak akan aktif.")
+# except Exception as e:
+#     st.warning(f"Gagal terhubung ke OpenRouter: {e}. Fitur AI tidak aktif.")
 
 
 # =======================================================================
@@ -83,7 +83,7 @@ with st.form(key="benchmark_form"):
         max_selections=3
     )
 
-    submit_button = st.form_submit_button("✨ Generate Profile & Find Matches")
+    submit_button = st.form_submit_button("✨ Find Matches") # Ubah teks tombol
 
 # =======================================================================
 # 5. LOGIKA SETELAH SUBMIT
@@ -96,7 +96,7 @@ if submit_button:
         st.error("❌ Pilih minimal 1 karyawan benchmark!")
     else:
         st.info("🔄 Memproses permintaan Anda...")
-        with st.spinner("Menyimpan benchmark, memanggil AI, dan menghitung skor..."):
+        with st.spinner("Menyimpan benchmark dan menghitung skor..."): # Hapus bagian AI
 
             # --- LANGKAH 5.1: SIMPAN BENCHMARK ---
             name_to_id_dict = {v: k for k, v in employee_dict.items()}
@@ -109,7 +109,6 @@ if submit_button:
                     "role_purpose": role_purpose_input,
                     "selected_talent_ids": selected_benchmark_ids
                 }).execute()
-                # Periksa apakah ada data yang dikembalikan (indikasi sukses)
                 if hasattr(insert_response, 'data') and insert_response.data:
                     insert_success = True
                 else:
@@ -120,30 +119,17 @@ if submit_button:
                 st.error(f"Error menyimpan benchmark ke Supabase: {e}")
                 st.stop()
 
-            # --- LANGKAH 5.2: PANGGIL AI ---
-            ai_output = None
-            if client_ai: # Hanya jalankan jika client_ai berhasil dibuat
-                st.subheader("🤖 AI-Generated Job Profile")
-                try:
-                    prompt = f"""
-                    Buatkan draf profil pekerjaan ringkas untuk posisi: {role_name_input} ({job_level_input}).
-                    Tujuan utama peran ini: {role_purpose_input}.
-                    Profil kandidat ideal (berdasarkan benchmark): Sangat empatik & komunikatif (Social Intelligence); Disiplin & fokus kualitas (Discipline); Berorientasi masa depan & proaktif (Vision).
-                    Buatkan hanya 3 bagian: Job Description (1 paragraf), Key Responsibilities (3-5 poin), Key Competencies (3-5 poin). Gunakan Bahasa Indonesia.
-                    """
-                    response_ai = client_ai.chat.completions.create(
-                        model="mistralai/mistral-7b-instruct:free",
-                        messages=[{"role": "user", "content": prompt}], max_tokens=400
-                    )
-                    ai_output = response_ai.choices[0].message.content
-                except Exception as e:
-                    st.warning(f"Gagal memanggil AI: {e}. Lanjut tanpa profil AI.")
-            else:
-                 st.warning("Koneksi ke AI (OpenRouter) tidak disiapkan. Profil AI dilewati.")
+            # --- LANGKAH 5.2: TAMPILKAN INFO PROFIL (PENGGANTI AI) ---
+            st.subheader("📝 Role Profile Summary")
+            st.write(f"**Role Name:** {role_name_input}")
+            st.write(f"**Job Level:** {job_level_input}")
+            st.write(f"**Role Purpose:** {role_purpose_input}")
+            st.write(f"**Benchmark Employees:** {', '.join(selected_benchmark_names)}")
+            st.markdown("---") 
 
-            if ai_output:
-                st.markdown(ai_output)
-            st.markdown("---") # Garis pemisah
+            # HAPUS BAGIAN PANGGIL AI 
+            # ai_output = None
+            # ... (kode AI dihapus) ...
 
             # --- LANGKAH 5.3: JALANKAN KUERI SQL ---
             st.header("📊 Ranked Talent List & Dashboard")
@@ -171,7 +157,7 @@ if submit_button:
                     by="final_match_rate", ascending=False, na_position='last'
                 )
                 
-                # Periksa nama kolom 'position_name' (pengganti 'role')
+                # Periksa nama kolom 'position_name' 
                 if 'position_name' not in df_ranked_list.columns:
                     st.error("Kolom 'position_name' tidak ditemukan dalam hasil kueri. Periksa function SQL.")
                     st.write("Kolom yang tersedia:", df_ranked_list.columns.tolist())
@@ -188,7 +174,7 @@ if submit_button:
 
                 with col1:
                     st.write("**Distribusi Final Match Rate**")
-                    fig1, ax1 = plt.subplots(figsize=(6, 4)) # Ukuran lebih kecil
+                    fig1, ax1 = plt.subplots(figsize=(6, 4)) 
                     sns.histplot(df_ranked_list['final_match_rate'].dropna(), kde=True, ax=ax1, bins=15, color='skyblue')
                     ax1.set_xlabel('Final Match Rate (%)', fontsize=10)
                     ax1.set_ylabel('Jumlah Karyawan', fontsize=10)
@@ -199,15 +185,15 @@ if submit_button:
                     st.write("**Kekuatan TGV (Rata-rata Top 10)**")
                     top_10_ids = df_ranked_list.head(10)['employee_id']
                     df_top_10 = df_results[df_results['employee_id'].isin(top_10_ids)]
-                    # Periksa apakah df_top_10 tidak kosong sebelum groupby
+                    
                     if not df_top_10.empty:
                         tgv_avg = df_top_10.drop_duplicates(
                             subset=['employee_id', 'tgv_name']
                         ).groupby('tgv_name')['tgv_match_rate'].mean().reset_index().sort_values(
                             by='tgv_match_rate', ascending=False
                         )
-                        fig2, ax2 = plt.subplots(figsize=(6, 4)) # Ukuran lebih kecil
-                        sns.barplot(data=tgv_avg, x='tgv_match_rate', y='tgv_name', ax=ax2, palette='coolwarm', hue='tgv_name', dodge=False, legend=False) # Hue for color
+                        fig2, ax2 = plt.subplots(figsize=(6, 4)) 
+                        sns.barplot(data=tgv_avg, x='tgv_match_rate', y='tgv_name', ax=ax2, palette='coolwarm', hue='tgv_name', dodge=False, legend=False) 
                         ax2.set_xlabel('Rata-rata Match Rate (%)', fontsize=10)
                         ax2.set_ylabel('TGV', fontsize=10)
                         ax2.tick_params(axis='both', which='major', labelsize=8)
