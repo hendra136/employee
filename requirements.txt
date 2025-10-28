@@ -1,6 +1,5 @@
 streamlit
 supabase
-openrouter-client
 pandas
 matplotlib
 seaborn
