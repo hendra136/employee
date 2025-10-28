@@ -137,6 +137,15 @@ if submit_button:
             try:
                 data_response = supabase.rpc('get_talent_match_results').execute()
 
+                # --- TAMBAHKAN DEBUGGING DI SINI ---
+                st.write("--- DEBUG INFO ---")
+                st.write("Data received from Supabase (first 5 rows):", data_response.data[:5] if data_response.data else "No data")
+                if data_response.data:
+                     temp_df_for_debug = pd.DataFrame(data_response.data)
+                     st.write("Columns received by Streamlit:", temp_df_for_debug.columns.tolist())
+                st.write("--- END DEBUG INFO ---")
+                # --- BATAS DEBUGGING ---
+
                 if not data_response.data:
                     error_detail = data_response.error.message if hasattr(data_response, 'error') and data_response.error else "No data returned from function"
                     st.error(f"Gagal menjalankan kueri SQL 'get_talent_match_results': {error_detail}")
