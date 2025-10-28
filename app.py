@@ -5,14 +5,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # =======================================================================
-# 1. KONFIGURASI AWAL & KONEKSI SUPABASE
+# 1. SETUP KONEKSI SUPABASE
 # =======================================================================
 st.set_page_config(layout="wide", page_title="Talent Match Intelligence System")
 
 st.title("🚀 Talent Match Intelligence System")
 st.write("Aplikasi ini membantu menemukan talenta internal yang cocok dengan profil benchmark.")
 
-# Koneksi ke Supabase
+debug_mode = False  # ubah ke True jika ingin menampilkan log debug
+
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -22,25 +23,27 @@ except Exception as e:
     st.stop()
 
 # =======================================================================
-# 2. AMBIL DATA EMPLOYEE
+# 2. AMBIL DAFTAR KARYAWAN
 # =======================================================================
 @st.cache_data(ttl=3600)
 def get_employee_list():
     try:
-        response = supabase.table("employees").select("employee_id, fullname").execute()
+        response = supabase.table('employees').select('employee_id, fullname').execute()
+        if debug_mode:
+            st.write("DEBUG RAW employees:", response)
         if response.data:
-            sorted_employees = sorted(response.data, key=lambda x: x["fullname"])
-            return {emp["employee_id"]: emp["fullname"] for emp in sorted_employees}
+            sorted_employees = sorted(response.data, key=lambda x: x['fullname'])
+            return {emp['employee_id']: emp['fullname'] for emp in sorted_employees}
         else:
-            st.warning("⚠️ Tidak ada data di tabel 'employees'. Periksa koneksi atau RLS policy.")
+            st.warning("⚠️ Tidak ada data di tabel 'employees'. Pastikan tabel berisi data.")
             return {}
     except Exception as e:
-        st.error(f"❌ Error mengambil data karyawan: {e}")
+        st.error(f"❌ Error mengambil daftar karyawan: {e}")
         return {}
 
 employee_dict = get_employee_list()
 if not employee_dict:
-    st.error("Gagal memuat data karyawan dari Supabase. Pastikan koneksi & RLS SELECT aktif.")
+    st.error("Gagal memuat daftar karyawan dari database. Periksa koneksi/nama tabel.")
     st.stop()
 
 # =======================================================================
@@ -50,7 +53,7 @@ with st.form(key="benchmark_form"):
     st.header("1️⃣ Role Information")
     role_name_input = st.text_input("Role Name", placeholder="Contoh: Data Analyst")
     job_level_input = st.selectbox("Job Level", ["Staff", "Supervisor", "Manager", "Senior Manager"])
-    role_purpose_input = st.text_area("Role Purpose", placeholder="Tuliskan tujuan utama role...")
+    role_purpose_input = st.text_area("Role Purpose", placeholder="1-2 kalimat tujuan utama peran...")
 
     st.header("2️⃣ Employee Benchmarking")
     employee_names_options = list(employee_dict.values())
@@ -63,85 +66,71 @@ with st.form(key="benchmark_form"):
     submit_button = st.form_submit_button("✨ Find Matches")
 
 # =======================================================================
-# 4. LOGIKA SAAT TOMBOL SUBMIT DITEKAN
+# 4. LOGIKA KETIKA FORM DIKIRIM
 # =======================================================================
 if submit_button:
     if not role_name_input or not job_level_input or not role_purpose_input or not selected_benchmark_names:
         st.error("❌ Semua field wajib diisi!")
         st.stop()
 
-    st.info("🔄 Menyimpan benchmark ke Supabase dan menjalankan analisis...")
+    st.info("🔄 Memproses benchmark dan menjalankan analisis...")
 
-    # Ubah nama → ID
-    name_to_id = {v: k for k, v in employee_dict.items()}
-    selected_benchmark_ids = [name_to_id[n] for n in selected_benchmark_names]
-
-    # ===================================================================
-    # 5. SIMPAN DATA KE SUPABASE
-    # ===================================================================
     try:
-        insert_response = supabase.table("talent_benchmarks").insert({
+        name_to_id_dict = {v: k for k, v in employee_dict.items()}
+        selected_benchmark_ids = [name_to_id_dict[name] for name in selected_benchmark_names]
+
+        insert_response = supabase.table('talent_benchmarks').insert({
             "role_name": role_name_input,
             "job_level": job_level_input,
             "role_purpose": role_purpose_input,
             "selected_talent_ids": selected_benchmark_ids
         }).execute()
 
-        st.write("DEBUG insert_response:", insert_response)
+        if debug_mode:
+            st.write("DEBUG insert_response:", insert_response)
 
-        if not insert_response or not insert_response.data:
-            st.error("❌ Gagal menyimpan benchmark. Periksa policy INSERT di Supabase.")
+        if not insert_response.data:
+            st.error("❌ Gagal menyimpan benchmark. Periksa policy INSERT di tabel 'talent_benchmarks'.")
             st.stop()
-
-        st.success("✅ Benchmark berhasil disimpan!")
     except Exception as e:
         st.error(f"❌ Error menyimpan benchmark: {e}")
         st.stop()
 
-    # ===================================================================
-    # 6. TAMPILKAN INFORMASI ROLE
-    # ===================================================================
-    st.subheader("📋 Role Profile Summary")
-    st.write(f"**Role Name:** {role_name_input}")
-    st.write(f"**Job Level:** {job_level_input}")
-    st.write(f"**Role Purpose:** {role_purpose_input}")
-    st.write(f"**Benchmark Employees:** {', '.join(selected_benchmark_names)}")
-
-    # ===================================================================
-    # 7. PANGGIL FUNCTION get_talent_match_results DI SUPABASE
-    # ===================================================================
+    # =======================================================================
+    # 5. PANGGIL FUNCTION SQL DI SUPABASE
+    # =======================================================================
     try:
-        st.subheader("📊 Ranked Talent List & Dashboard")
         data_response = supabase.rpc("get_talent_match_results").execute()
+        if debug_mode:
+            st.write("DEBUG data_response:", data_response)
 
         if not data_response or not data_response.data:
-            st.warning("⚠️ Tidak ada hasil dari function 'get_talent_match_results'. Periksa SQL Function di Supabase.")
+            st.warning("⚠️ Tidak ada hasil dari function 'get_talent_match_results'.")
             st.stop()
 
         df_results = pd.DataFrame(data_response.data)
-
     except Exception as e:
-        st.error(f"❌ Error menjalankan function SQL: {e}")
+        st.error(f"❌ Error menjalankan function 'get_talent_match_results': {e}")
         st.stop()
 
-    # ===================================================================
-    # 8. TAMPILKAN HASIL RANKING
-    # ===================================================================
+    # =======================================================================
+    # 6. TAMPILKAN HASIL RANKING
+    # =======================================================================
     if not df_results.empty:
-        st.subheader("🏆 Ranked Talent List")
+        st.subheader("🏆 Ranked Talent List (Top Matches)")
 
-        if "final_match_rate" not in df_results.columns:
+        if 'final_match_rate' in df_results.columns:
+            df_ranked = df_results.drop_duplicates(subset=['employee_id']).sort_values(
+                by="final_match_rate", ascending=False
+            )
+        else:
             st.error("Kolom 'final_match_rate' tidak ditemukan di hasil SQL.")
             st.stop()
 
-        df_ranked = df_results.drop_duplicates(subset=["employee_id"]).sort_values(
-            by="final_match_rate", ascending=False
-        )
-
-        expected_cols = ["fullname", "position_name", "directorate", "grade", "final_match_rate"]
+        expected_cols = ['fullname', 'position_name', 'directorate', 'grade', 'final_match_rate']
         for col in expected_cols:
             if col not in df_ranked.columns:
-                st.warning(f"Kolom '{col}' tidak ada di hasil SQL.")
+                df_ranked[col] = None  # buat kolom kosong jika belum ada
 
         st.dataframe(
             df_ranked[expected_cols].head(20),
@@ -151,36 +140,39 @@ if submit_button:
                 "final_match_rate": st.column_config.ProgressColumn(
                     "Match Rate (%)", format="%.1f%%", min_value=0, max_value=100
                 )
-            },
+            }
         )
 
-        # ===================================================================
-        # 9. VISUALISASI
-        # ===================================================================
+        # =======================================================================
+        # 7. VISUALISASI DASHBOARD
+        # =======================================================================
         st.subheader("📈 Talent Match Dashboard")
         col1, col2 = st.columns(2)
 
         with col1:
             st.write("**Distribusi Final Match Rate**")
             fig1, ax1 = plt.subplots(figsize=(6, 4))
-            sns.histplot(df_ranked["final_match_rate"].dropna(), bins=15, kde=True, color="skyblue", ax=ax1)
+            sns.histplot(df_ranked['final_match_rate'].dropna(), kde=True, bins=15, color='skyblue', ax=ax1)
             ax1.set_xlabel("Final Match Rate (%)")
             ax1.set_ylabel("Jumlah Karyawan")
             st.pyplot(fig1)
 
         with col2:
             st.write("**Rata-rata TGV Match (Top 10 Talent)**")
-            if "tgv_name" in df_results.columns:
-                top10 = df_ranked.head(10)["employee_id"]
-                df_top10 = df_results[df_results["employee_id"].isin(top10)]
-                tgv_avg = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
+            if 'tgv_name' in df_results.columns:
+                top_10 = df_ranked.head(10)['employee_id']
+                df_top10 = df_results[df_results['employee_id'].isin(top_10)]
+                tgv_avg = df_top10.groupby('tgv_name')['tgv_match_rate'].mean().reset_index().sort_values(
+                    by='tgv_match_rate', ascending=False
+                )
                 fig2, ax2 = plt.subplots(figsize=(6, 4))
-                sns.barplot(data=tgv_avg, y="tgv_name", x="tgv_match_rate", palette="coolwarm", ax=ax2)
+                sns.barplot(data=tgv_avg, y='tgv_name', x='tgv_match_rate', palette='coolwarm', ax=ax2)
                 ax2.set_xlabel("Rata-rata Match Rate (%)")
+                ax2.set_ylabel("TGV")
                 ax2.set_xlim(0, 100)
                 st.pyplot(fig2)
             else:
-                st.info("Kolom 'tgv_name' belum ada di hasil SQL.")
+                st.info("Kolom 'tgv_name' belum ada di hasil SQL. Tambahkan di function jika ingin grafik ini muncul.")
 
         st.success("✅ Analisis selesai! Semua sistem berjalan normal.")
     else:
