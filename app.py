@@ -131,34 +131,56 @@ if submit_button:
             # ai_output = None
             # ... (kode AI dihapus) ...
 
-            # --- LANGKAH 5.3: JALANKAN KUERI SQL ---
+           # --- LANGKAH 5.3: JALANKAN KUERI SQL ---
             st.header("📊 Ranked Talent List & Dashboard")
             df_results = None
+            data_response = None # Inisialisasi
             try:
+                st.write("DEBUG: Memulai panggilan ke supabase.rpc('get_talent_match_results')...") # DEBUG 1
                 data_response = supabase.rpc('get_talent_match_results').execute()
-
-                # --- TAMBAHKAN DEBUGGING DI SINI ---
+                st.write("DEBUG: Panggilan RPC selesai.") # DEBUG 2
+            
+                # --- DEBUG INFO DETAIL ---
                 st.write("--- DEBUG INFO ---")
-                st.write("Data received from Supabase (first 5 rows):", data_response.data[:5] if data_response.data else "No data")
-                if data_response.data:
-                     temp_df_for_debug = pd.DataFrame(data_response.data)
-                     st.write("Columns received by Streamlit:", temp_df_for_debug.columns.tolist())
+                st.write("Isi data_response:", data_response) # DEBUG 3: Lihat seluruh response object
+                if hasattr(data_response, 'data') and data_response.data:
+                    st.write("Jumlah baris data diterima:", len(data_response.data)) # DEBUG 4
+                    # Coba buat DataFrame sementara HANYA untuk melihat kolom
+                    try:
+                         temp_df_for_debug = pd.DataFrame(data_response.data)
+                         st.write("Kolom yang diterima oleh Streamlit:", temp_df_for_debug.columns.tolist()) # DEBUG 5
+                         st.write("5 baris pertama data mentah:", temp_df_for_debug.head().to_dict()) # DEBUG 6
+                    except Exception as df_error:
+                         st.write("DEBUG: Gagal membuat DataFrame dari data:", df_error)
+                else:
+                    st.write("DEBUG: data_response.data KOSONG atau tidak ada.") # DEBUG 7
+                    # Cek apakah ada error dari Supabase
+                    if hasattr(data_response, 'error') and data_response.error:
+                         st.write("DEBUG: Error dari Supabase RPC:", data_response.error) # DEBUG 8
+                    else:
+                         st.write("DEBUG: Tidak ada data DAN tidak ada error dari Supabase RPC.")
+            
                 st.write("--- END DEBUG INFO ---")
                 # --- BATAS DEBUGGING ---
-
-                if not data_response.data:
-                    error_detail = data_response.error.message if hasattr(data_response, 'error') and data_response.error else "No data returned from function"
-                    st.error(f"Gagal menjalankan kueri SQL 'get_talent_match_results': {error_detail}")
-                    st.write("Pastikan function ada di Supabase & benchmark sudah dipilih.")
-                    st.stop()
-
-                df_results = pd.DataFrame(data_response.data)
-
+            
+                # Proses data HANYA jika ada
+                if data_response and data_response.data:
+                    df_results = pd.DataFrame(data_response.data)
+                else:
+                    # Tampilkan pesan error jika data tidak ada (bisa jadi karena benchmark belum ada)
+                    error_msg = "Tidak ada data hasil perhitungan."
+                    if hasattr(data_response, 'error') and data_response.error:
+                        error_msg += f" Error Supabase: {data_response.error.message}"
+                    elif not selected_benchmark_ids:
+                         error_msg += " Benchmark belum dipilih?"
+                    st.error(error_msg)
+                    st.stop() # Hentikan eksekusi jika tidak ada data
+            
             except Exception as e:
-                st.error(f"Error saat menjalankan/memproses kueri SQL: {e}")
+                st.error(f"Error saat menjalankan kueri SQL atau memproses hasilnya: {e}")
                 st.write("Pastikan function 'get_talent_match_results' ada dan tidak error di Supabase.")
-                st.stop()
-
+                st.stop() # Hentikan jika ada error tak terduga
+    
             # --- LANGKAH 5.4: TAMPILKAN OUTPUT ---
             if df_results is not None and not df_results.empty:
                 st.subheader("🏆 Ranked Talent List (Top Matches)")
@@ -166,9 +188,23 @@ if submit_button:
                     by="final_match_rate", ascending=False, na_position='last'
                 )
 
-                # --- TAMBAHKAN DEBUG INI ---
-                st.write("DEBUG: Kolom di df_ranked_list:", df_ranked_list.columns.tolist())
-                # --- BATAS DEBUG ---
+                # Periksa lagi nama kolom sebelum menampilkan
+                available_columns = df_ranked_list.columns.tolist()
+                st.write("DEBUG FINAL: Kolom di df_ranked_list:", available_columns) # DEBUG 9
+            
+                target_columns = ['fullname', 'position_name', 'directorate', 'grade', 'final_match_rate']
+            
+                # Cek apakah semua kolom target ada
+                missing_columns = [col for col in target_columns if col not in available_columns]
+                if missing_columns:
+                    st.error(f"Kolom berikut tidak ditemukan di hasil: {missing_columns}. Kolom yang ada: {available_columns}")
+                    st.stop()
+            
+                st.dataframe(
+                    df_ranked_list[target_columns].head(20),
+                    use_container_width=True, hide_index=True,
+                    column_config={"final_match_rate": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100)}
+                )
     
                 # Periksa nama kolom 'position_name' 
                 if 'position_name' not in df_ranked_list.columns:
