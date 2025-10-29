@@ -99,14 +99,6 @@ if submit:
         st.warning("⚠️ Tidak ada hasil match ditemukan.")
         st.stop()
 
-    # --- TAMBAHKAN DEBUG DI SINI ---
-    st.write("--- DEBUG: Data Mentah Sebelum Normalisasi ---")
-    st.write("Kolom mentah:", df.columns.tolist())
-    st.write("Tipe data kolom mentah:", df.dtypes.to_dict())
-    st.write("5 baris data mentah:", df.head().to_dict())
-    st.write("--- END DEBUG ---")
-    # --- BATAS DEBUG ---
-
     #DEBUG
     #st.write(df.head())
     #st.write(df.columns.tolist())
