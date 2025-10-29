@@ -10,7 +10,7 @@ import requests
 # =======================================================================
 st.set_page_config(layout="wide", page_title="Talent Match Intelligence System")
 st.title("🚀 Talent Match Intelligence System")
-st.caption("Menemukan talenta terbaik berdasarkan benchmark, kompetensi, dan insight AI (Gemini 2.5).")
+st.caption("Menemukan talenta terbaik berdasarkan benchmark, kompetensi, dan insight AI (Gemini 2.5 Flash).")
 
 # =======================================================================
 # 2️⃣ KONEKSI SUPABASE
@@ -91,6 +91,22 @@ if submit:
     try:
         data = supabase.rpc("get_talent_match_results").execute()
         df = pd.DataFrame(data.data)
+
+        # ✅ Normalisasi kolom huruf kecil & isi None jadi string kosong
+        df.columns = [c.lower() for c in df.columns]
+        for col in ["position_name", "grade", "directorate"]:
+            if col in df.columns:
+                df[col] = df[col].fillna("")
+
+        # ✅ Jika tetap kosong, ganti dengan "Tidak Ditemukan"
+        df["position_name"] = df["position_name"].replace("", "Tidak Ditemukan")
+        df["grade"] = df["grade"].replace("", "Tidak Ditemukan")
+        df["directorate"] = df["directorate"].replace("", "Tidak Ditemukan")
+
+        # ✅ Debug ringan: tampilkan 3 baris pertama hasil asli
+        st.caption("📊 Data hasil SQL (preview 3 baris pertama):")
+        st.dataframe(df.head(3))
+
     except Exception as e:
         st.error(f"❌ Error function SQL: {e}")
         st.stop()
@@ -98,22 +114,6 @@ if submit:
     if df.empty:
         st.warning("⚠️ Tidak ada hasil match ditemukan.")
         st.stop()
-
-    #DEBUG
-    #st.write(df.head())
-    #st.write(df.columns.tolist())
-
-    # ===================================================================
-    # ✅ NORMALISASI DATA AGAR NONE TIDAK MUNCUL
-    # ===================================================================
-    # Pastikan kolom tidak sensitif terhadap huruf besar
-    df.columns = [c.strip().lower() for c in df.columns]
-
-    # Kadang Supabase mengembalikan null walau ada data
-    for col in ["position_name", "directorate", "grade"]:
-        if col in df.columns:
-            df[col] = df[col].fillna("").replace("None", "").replace("null", "")
-            df[col] = df[col].apply(lambda x: str(x).strip() if x else "Data Tidak Ditemukan")
 
     # ===================================================================
     # 7️⃣ HASIL RANK
@@ -123,7 +123,16 @@ if submit:
     df_sorted = df.drop_duplicates(subset=["employee_id"]).sort_values("final_match_rate", ascending=False)
     df_display = df_sorted[["fullname", "position_name", "directorate", "grade", "final_match_rate"]]
 
-    st.dataframe(df_display.head(20), use_container_width=True)
+    st.dataframe(
+        df_display.head(20),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "final_match_rate": st.column_config.ProgressColumn(
+                "Match Rate (%)", format="%.1f%%", min_value=0, max_value=100
+            )
+        }
+    )
 
     # ===================================================================
     # 8️⃣ VISUALISASI
@@ -146,6 +155,8 @@ if submit:
             fig2, ax2 = plt.subplots()
             sns.barplot(data=avg_tgv, y="tgv_name", x="tgv_match_rate", ax=ax2)
             st.pyplot(fig2)
+        else:
+            st.info("Kolom 'tgv_name' belum tersedia di function SQL.")
 
     # ===================================================================
     # 9️⃣ FITUR AI GOOGLE GEMINI 2.5
