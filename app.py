@@ -99,45 +99,36 @@ if submit:
         st.warning("⚠️ Tidak ada hasil match ditemukan.")
         st.stop()
 
+    #DEBUG
+    #st.write(df.head())
+    #st.write(df.columns.tolist())
+   
+    
+
+    # ==============================================================
+    # ✅ NORMALISASI DATA AGAR NONE TIDAK Muncul
     # ===================================================================
-    # 7️⃣ NORMALISASI KOLOM
-    # ===================================================================
+    # Pastikan kolom tidak sensitif terhadap huruf besar
     df.columns = [c.strip().lower() for c in df.columns]
 
-    # Pastikan semua kolom wajib ada
-    expected_cols = [
-        "employee_id", "fullname", "directorate", "role", "grade",
-        "tgv_name", "tv_name", "baseline_score", "user_score",
-        "tv_match_rate", "tgv_match_rate", "final_match_rate"
-    ]
-
-    missing_cols = [col for col in expected_cols if col not in df.columns]
-    if missing_cols:
-        st.warning(f"⚠️ Kolom berikut tidak ditemukan di hasil SQL: {missing_cols}")
-
-    # Bersihkan nilai None/null agar tidak muncul teks kosong
-    for col in ["directorate", "role", "grade"]:
+    # Kadang Supabase mengembalikan null walau ada data
+    for col in ["position_name", "directorate", "grade"]:
         if col in df.columns:
             df[col] = df[col].fillna("").replace("None", "").replace("null", "")
             df[col] = df[col].apply(lambda x: str(x).strip() if x else "Data Tidak Ditemukan")
 
     # ===================================================================
-    # 8️⃣ TAMPILKAN TABEL UTAMA
+    # 7️⃣ HASIL RANK
     # ===================================================================
-    st.subheader("🏆 Talent Match Result Table")
+    st.subheader("🏆 Ranked Talent List (Top Matches)")
 
-    cols_order = [
-        "employee_id", "fullname", "directorate", "role", "grade",
-        "tgv_name", "tv_name", "baseline_score", "user_score",
-        "tv_match_rate", "tgv_match_rate", "final_match_rate"
-    ]
-    available_cols = [c for c in cols_order if c in df.columns]
+    df_sorted = df.drop_duplicates(subset=["employee_id"]).sort_values("final_match_rate", ascending=False)
+    df_display = df_sorted[["fullname", "position_name", "directorate", "grade", "final_match_rate"]]
 
-    df_display = df[available_cols].sort_values("final_match_rate", ascending=False)
-    st.dataframe(df_display, use_container_width=True)
+    st.dataframe(df_display.head(20), use_container_width=True)
 
     # ===================================================================
-    # 9️⃣ VISUALISASI
+    # 8️⃣ VISUALISASI
     # ===================================================================
     st.subheader("📊 Dashboard Match Overview")
     col1, col2 = st.columns(2)
@@ -145,13 +136,13 @@ if submit:
     with col1:
         st.write("Distribusi Final Match Rate")
         fig, ax = plt.subplots()
-        sns.histplot(df["final_match_rate"], bins=10, kde=True, color="skyblue", ax=ax)
+        sns.histplot(df_sorted["final_match_rate"], bins=10, kde=True, color="skyblue", ax=ax)
         st.pyplot(fig)
 
     with col2:
         st.write("Rata-rata TGV Match (Top 10 Talent)")
         if "tgv_name" in df.columns:
-            top_10 = df.head(10)["employee_id"]
+            top_10 = df_sorted.head(10)["employee_id"]
             df_top10 = df[df["employee_id"].isin(top_10)]
             avg_tgv = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
             fig2, ax2 = plt.subplots()
@@ -159,7 +150,7 @@ if submit:
             st.pyplot(fig2)
 
     # ===================================================================
-    # 🔟 FITUR AI GOOGLE GEMINI 2.5
+    # 9️⃣ FITUR AI GOOGLE GEMINI 2.5
     # ===================================================================
     st.subheader("🤖 AI Talent Insights")
 
@@ -180,8 +171,8 @@ if submit:
         except:
             return "[AI tidak mengembalikan hasil]"
 
-    # --- Siapkan konteks untuk AI ---
-    top_candidates = df_display.head(3).to_dict("records")
+    # Siapkan konteks AI
+    top_candidates = df_sorted.head(3).to_dict("records")
     tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
 
     tgv_text = "\n".join([f"- {k}: {v:.1f}%" for k, v in tgv_summary.items()])
