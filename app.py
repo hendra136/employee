@@ -90,10 +90,10 @@ if submit:
     # =========================
     st.markdown("### 🐞 Debugging Info (AUTOMATIS)")
     try:
-        # 1. Tampilkan semua employees (konfirmasi)
+        # 1. Tampilkan sample employees (konfirmasi)
         st.write("🔎 [DEBUG] Employees (sample 10)", list(employees.items())[:10])
 
-        # 2. Cek isi tabel talent_benchmarks (terbaru 5)
+        # 2. Cek isi tabel talent_benchmarks (terbaru 10)
         try:
             res_bench_all = supabase.table("talent_benchmarks").select("*").order("job_vacancy_id", desc=True).limit(10).execute()
             st.write("🔎 [DEBUG] talent_benchmarks (latest 10)", res_bench_all.data)
@@ -124,6 +124,8 @@ if submit:
         try:
             res_strengths = supabase.table("strengths").select("employee_id, theme, rank").limit(100).execute()
             st.write("🔎 [DEBUG] strengths (sample 100):", res_strengths.data)
+            cnt_str = supabase.table("strengths").select("employee_id", count="exact").execute()
+            st.write("🔎 [DEBUG] strengths count:", cnt_str.count if hasattr(cnt_str, 'count') else "N/A")
         except Exception as e:
             st.error(f"🔎 [DEBUG] Error fetching strengths: {e}")
 
@@ -142,23 +144,24 @@ if submit:
         st.error(f"🔎 [DEBUG] Error in debug block: {e}")
 
     # =========================
-    # 6️⃣ FUNGSI SQL SUPABASE (ASLINYA)
+    # 6️⃣ FUNGSI SQL SUPABASE (ASLINYA) + AGREGASI
     # =========================
     try:
         data = supabase.rpc("get_talent_match_results").execute()
 
         # DEBUG: tunjukkan hasil raw RPC sebelum menjadi DataFrame
-        st.write("🔎 [DEBUG] RPC raw result (first 5 elements)", data.data[:5] if getattr(data, "data", None) else data.data)
+        st.write("🔎 [DEBUG] RPC raw result (first 10 elements)", data.data[:10] if getattr(data, "data", None) else data.data)
 
         df = pd.DataFrame(data.data)
 
         # DEBUG: informasikan shape, columns, dtypes
-        st.write("🔎 [DEBUG] DataFrame shape:", df.shape)
+        st.write("🔎 [DEBUG] DataFrame shape (raw):", df.shape)
         st.write("🔎 [DEBUG] DataFrame columns (raw):", df.columns.tolist())
         try:
-            st.write("🔎 [DEBUG] DataFrame dtypes:", df.dtypes.to_dict())
+            st.write("🔎 [DEBUG] DataFrame dtypes (raw):", df.dtypes.to_dict())
         except:
             pass
+
     except Exception as e:
         st.error(f"❌ Error function SQL: {e}")
         st.stop()
@@ -167,48 +170,116 @@ if submit:
         st.warning("⚠️ Tidak ada hasil match ditemukan.")
         # Tambahkan debug tambahan mengapa kosong: periksa apakah selected_ids exist & apakah competencies/strength kosong
         try:
-            # Periksa kembali last benchmark dan selected_ids
             last_bench = supabase.table("talent_benchmarks").select("*").order("job_vacancy_id", desc=True).limit(1).execute()
             st.write("🔎 [DEBUG] Re-check latest benchmark:", last_bench.data)
         except Exception as e:
             st.error(f"🔎 [DEBUG] Error re-checking benchmark: {e}")
-
-        try:
-            # Cek sample competencies dan strengths counts
-            comp_cnt = supabase.table("competencies_yearly").select("employee_id", count="exact").eq("year", 2025).execute()
-            str_cnt = supabase.table("strengths").select("employee_id", count="exact").execute()
-            st.write("🔎 [DEBUG] competencies_yearly count (2025):", comp_cnt.count if hasattr(comp_cnt, 'count') else "N/A")
-            st.write("🔎 [DEBUG] strengths count:", str_cnt.count if hasattr(str_cnt, 'count') else "N/A")
-        except Exception as e:
-            st.error(f"🔎 [DEBUG] Error counting competencies/strengths: {e}")
-
         st.stop()
 
-    #DEBUG
-    #st.write(df.head())
-    #st.write(df.columns.tolist())
-
     # ===================================================================
-    # ✅ NORMALISASI DATA AGAR NONE TIDAK MUNCUL
+    # ✅ NORMALISASI DATA AGAR NONE TIDAK MUNCUL dan KONVERSI TIPE
     # ===================================================================
     # Pastikan kolom tidak sensitif terhadap huruf besar
     df.columns = [c.strip().lower() for c in df.columns]
 
+    # convert numeric columns if ada
+    numeric_cols = ["baseline_score", "user_score", "tv_match_rate", "tgv_match_rate", "final_match_rate"]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     # Kadang Supabase mengembalikan null walau ada data
-    for col in ["position_name", "directorate", "grade"]:
+    for col in ["position_name", "directorate", "grade", "fullname"]:
         if col in df.columns:
             df[col] = df[col].fillna("").replace("None", "").replace("null", "")
             df[col] = df[col].apply(lambda x: str(x).strip() if x else "Data Tidak Ditemukan")
+
+    # DEBUG: setelah normalisasi
+    st.write("🔎 [DEBUG] DataFrame shape (normalized):", df.shape)
+    st.write("🔎 [DEBUG] DataFrame columns (normalized):", df.columns.tolist())
+    try:
+        st.write("🔎 [DEBUG] DataFrame dtypes (normalized):", df.dtypes.to_dict())
+    except:
+        pass
+
+    # ===================================================================
+    # AGREGASI KE LEVEL EMPLOYEE (satu baris per employee)
+    # ===================================================================
+    # helper: ambil first non-empty value
+    def first_nonempty(series):
+        s = series.dropna().astype(str).map(lambda x: x.strip())
+        s = s[s != ""]
+        return s.iloc[0] if not s.empty else "Data Tidak Ditemukan"
+
+    # Buat agregasi: final_match_rate -> max, nama -> first non-empty, posisi/directorate/grade -> first non-empty
+    agg_dict = {}
+    if "fullname" in df.columns:
+        agg_dict["fullname"] = first_nonempty
+    if "position_name" in df.columns:
+        agg_dict["position_name"] = first_nonempty
+    if "directorate" in df.columns:
+        agg_dict["directorate"] = first_nonempty
+    if "grade" in df.columns:
+        agg_dict["grade"] = first_nonempty
+    # numeric aggregates
+    if "final_match_rate" in df.columns:
+        agg_dict["final_match_rate"] = ("final_match_rate", "max")
+    if "tgv_match_rate" in df.columns:
+        # keep mean tgv per employee if desired (not used in main table)
+        agg_dict["tgv_match_rate_mean"] = ("tgv_match_rate", "mean")
+
+    # perform groupby aggregation safely
+    # Build a DataFrame per-employee
+    group_cols = ["employee_id"]
+    df_emp = None
+    try:
+        # For fields that need custom first_nonempty, we handle separately
+        grouped = df.groupby("employee_id")
+        rows = []
+        for emp_id, g in grouped:
+            row = {"employee_id": emp_id}
+            if "fullname" in g.columns:
+                row["fullname"] = first_nonempty(g["fullname"])
+            if "position_name" in g.columns:
+                row["position_name"] = first_nonempty(g["position_name"])
+            if "directorate" in g.columns:
+                row["directorate"] = first_nonempty(g["directorate"])
+            if "grade" in g.columns:
+                row["grade"] = first_nonempty(g["grade"])
+            if "final_match_rate" in g.columns:
+                try:
+                    row["final_match_rate"] = float(g["final_match_rate"].dropna().max())
+                except:
+                    row["final_match_rate"] = None
+            else:
+                row["final_match_rate"] = None
+            rows.append(row)
+        df_emp = pd.DataFrame(rows)
+    except Exception as e:
+        st.error(f"🔎 [DEBUG] Error saat agregasi per-employee: {e}")
+        st.stop()
+
+    if df_emp is None or df_emp.empty:
+        st.warning("⚠️ Hasil agregasi per-employee kosong. Periksa kembali RPC atau data mentah.")
+        st.stop()
+
+    # Pastikan final_match_rate numeric
+    if "final_match_rate" in df_emp.columns:
+        df_emp["final_match_rate"] = pd.to_numeric(df_emp["final_match_rate"], errors="coerce")
+
+    # DEBUG: tunjukkan hasil agregasi per-employee
+    st.write("🔎 [DEBUG] Aggregated employees (sample 20)", df_emp.head(20))
+    st.write("🔎 [DEBUG] Aggregated shape:", df_emp.shape)
 
     # ===================================================================
     # 7️⃣ HASIL RANK
     # ===================================================================
     st.subheader("🏆 Ranked Talent List (Top Matches)")
 
-    df_sorted = df.drop_duplicates(subset=["employee_id"]).sort_values("final_match_rate", ascending=False)
+    df_sorted = df_emp.sort_values("final_match_rate", ascending=False)
     df_display = df_sorted[["fullname", "position_name", "directorate", "grade", "final_match_rate"]]
 
-    st.dataframe(df_display.head(20), use_container_width=True)
+    st.dataframe(df_display.head(50), use_container_width=True)
 
     # ===================================================================
     # 8️⃣ VISUALISASI
@@ -219,18 +290,25 @@ if submit:
     with col1:
         st.write("Distribusi Final Match Rate")
         fig, ax = plt.subplots()
-        sns.histplot(df_sorted["final_match_rate"], bins=10, kde=True, color="skyblue", ax=ax)
+        # gunakan df_emp untuk distribusi final match per employee
+        sns.histplot(df_emp["final_match_rate"].dropna(), bins=10, kde=True, ax=ax)
         st.pyplot(fig)
 
     with col2:
         st.write("Rata-rata TGV Match (Top 10 Talent)")
-        if "tgv_name" in df.columns:
-            top_10 = df_sorted.head(10)["employee_id"]
-            df_top10 = df[df["employee_id"].isin(top_10)]
-            avg_tgv = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
-            fig2, ax2 = plt.subplots()
-            sns.barplot(data=avg_tgv, y="tgv_name", x="tgv_match_rate", ax=ax2)
-            st.pyplot(fig2)
+        if "tgv_name" in df.columns and "tgv_match_rate" in df.columns:
+            # ambil top 10 employee id dari df_emp
+            top10_emp = df_emp.sort_values("final_match_rate", ascending=False).head(10)["employee_id"].tolist()
+            df_top10 = df[df["employee_id"].isin(top10_emp)]
+            if not df_top10.empty:
+                avg_tgv = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
+                fig2, ax2 = plt.subplots()
+                sns.barplot(data=avg_tgv, y="tgv_name", x="tgv_match_rate", ax=ax2)
+                st.pyplot(fig2)
+            else:
+                st.write("⚠️ Tidak ada data TGV untuk top 10.")
+        else:
+            st.write("⚠️ Kolom TGV tidak tersedia pada hasil RPC.")
 
     # ===================================================================
     # 9️⃣ FITUR AI GOOGLE GEMINI 2.5
@@ -256,10 +334,14 @@ if submit:
 
     # Siapkan konteks AI
     top_candidates = df_sorted.head(3).to_dict("records")
-    tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
+    # Untuk tgv_summary gunakan df (per-TGV)
+    if "tgv_name" in df.columns and "tgv_match_rate" in df.columns:
+        tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
+    else:
+        tgv_summary = {}
 
     tgv_text = "\n".join([f"- {k}: {v:.1f}%" for k, v in tgv_summary.items()])
-    candidates_text = "\n".join([f"{i+1}. {c['fullname']} ({c['final_match_rate']:.1f}%)" for i, c in enumerate(top_candidates)])
+    candidates_text = "\n".join([f"{i+1}. {c['fullname']} ({c['final_match_rate']:.1f}%)" for i, c in enumerate(top_candidates)]) if top_candidates else ""
 
     prompt_profile = f"""
 Buatkan profil pekerjaan untuk role {role_name} dengan tujuan {role_purpose}.
