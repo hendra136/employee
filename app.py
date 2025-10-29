@@ -3,7 +3,7 @@ from supabase import create_client, Client as SupabaseClient
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from google import genai  # ====> Tambahan untuk AI Gemini
+import google.genai as genai # ====> Tambahan untuk AI Gemini
 
 # =======================================================================
 # 1️⃣ KONEKSI SUPABASE
@@ -167,17 +167,24 @@ if submit_button:
     # =======================================================================
     st.header("🤖 AI Talent Insights")
 
+    # Konfigurasi koneksi AI
+    try:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    except Exception as e:
+        st.warning(f"⚠️ Tidak dapat mengkonfigurasi Google Gemini: {e}")
+
+
     def generate_ai_output(prompt_text):
         """Fungsi panggil AI Gemini"""
         try:
             client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
             model_name = "gemini-1.5-flash"  # ✅ Model terbaru
-
+    
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt_text
             )
-
+    
             ai_text = response.output_text.strip() if hasattr(response, "output_text") else str(response)
             return ai_text
         except Exception as e:
