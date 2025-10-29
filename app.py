@@ -108,7 +108,7 @@ if submit:
     df.columns = [c.strip().lower() for c in df.columns]
 
     expected_columns = [
-        "employee_id", "fullname", "directorate", "position_name", "grade",
+        "employee_id", "fullname", "directorate_id", "dp.name", "grade_id",
         "tgv_name", "tv_name", "baseline_score", "user_score",
         "tv_match_rate", "tgv_match_rate", "final_match_rate"
     ]
