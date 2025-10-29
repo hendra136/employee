@@ -182,13 +182,15 @@ if submit_button:
         # 9️⃣ FITUR AI (GOOGLE GENERATIVE LANGUAGE)
         # =======================================================================
         GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
-        GOOGLE_AI_MODEL = st.secrets.get("GOOGLE_AI_MODEL", "models/text-bison-001")
+        GOOGLE_AI_MODEL = st.secrets.get("GOOGLE_AI_MODEL", "gemini-2.5-flash")
 
         def panggil_ai(prompt: str):
             if not GOOGLE_API_KEY:
                 return "[AI Error: GOOGLE_API_KEY tidak ditemukan di secrets]"
-            url = f"https://generativelanguage.googleapis.com/v1beta2/{GOOGLE_AI_MODEL}:generateText?key={GOOGLE_API_KEY}"
-            payload = {"prompt": {"text": prompt}, "temperature": 0.4, "maxOutputTokens": 512}
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GOOGLE_AI_MODEL}:generateContent?key={GOOGLE_API_KEY}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            headers = {"Content-Type": "application/json"}
+            
             response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload)
             if response.status_code != 200:
                 return f"[AI Error {response.status_code}: {response.text}]"
