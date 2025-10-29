@@ -3,4 +3,5 @@ supabase
 pandas
 matplotlib
 seaborn
-google-genai
+google-generativeai
+
