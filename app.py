@@ -99,6 +99,10 @@ if submit:
         st.warning("⚠️ Tidak ada hasil match ditemukan.")
         st.stop()
 
+    #DEBUG
+    st.write(df.head())
+    st.write(df.columns.tolist())
+
     # ===================================================================
     # ✅ NORMALISASI DATA AGAR NONE TIDAK MUNCUL
     # ===================================================================
