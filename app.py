@@ -92,19 +92,42 @@ if submit:
         data = supabase.rpc("get_talent_match_results").execute()
         df = pd.DataFrame(data.data)
 
-        # ✅ Normalisasi kolom huruf kecil & isi None jadi string kosong
+        # Pastikan semua kolom huruf kecil
         df.columns = [c.lower() for c in df.columns]
+
+        # Pastikan kolom posisi, grade, direktorat tidak kosong
         for col in ["position_name", "grade", "directorate"]:
             if col in df.columns:
                 df[col] = df[col].fillna("")
 
-        # ✅ Jika tetap kosong, ganti dengan "Tidak Ditemukan"
-        df["position_name"] = df["position_name"].replace("", "Tidak Ditemukan")
-        df["grade"] = df["grade"].replace("", "Tidak Ditemukan")
-        df["directorate"] = df["directorate"].replace("", "Tidak Ditemukan")
+        # Jika masih kosong, ambil ulang dari tabel referensi
+        missing_rows = df[df["position_name"] == ""].copy()
+        if not missing_rows.empty:
+            emp_ids = tuple(missing_rows["employee_id"].tolist())
+            if len(emp_ids) == 1:
+                emp_ids = f"('{emp_ids[0]}')"
+            query = f"""
+            SELECT e.employee_id, p.name AS position_name, g.name AS grade, d.name AS directorate
+            FROM employees e
+            LEFT JOIN dim_positions p ON e.position_id = p.position_id
+            LEFT JOIN dim_grades g ON e.grade_id = g.grade_id
+            LEFT JOIN dim_directorate d ON e.directorate_id = d.directorate_id
+            WHERE e.employee_id IN {emp_ids};
+            """
+            try:
+                fallback = supabase.rpc("execute_sql_query", {"query": query}).execute()
+                if fallback.data:
+                    df_fallback = pd.DataFrame(fallback.data)
+                    df.update(df_fallback)
+            except:
+                pass
 
-        # ✅ Debug ringan: tampilkan 3 baris pertama hasil asli
-        st.caption("📊 Data hasil SQL (preview 3 baris pertama):")
+        # Ganti string kosong jadi Data Tidak Ditemukan
+        df["position_name"].replace("", "Data Tidak Ditemukan", inplace=True)
+        df["grade"].replace("", "Data Tidak Ditemukan", inplace=True)
+        df["directorate"].replace("", "Data Tidak Ditemukan", inplace=True)
+
+        st.caption("📋 Data hasil SQL (preview 3 baris pertama):")
         st.dataframe(df.head(3))
 
     except Exception as e:
@@ -116,15 +139,22 @@ if submit:
         st.stop()
 
     # ===================================================================
-    # 7️⃣ HASIL RANK
+    # 7️⃣ TABEL LENGKAP
     # ===================================================================
-    st.subheader("🏆 Ranked Talent List (Top Matches)")
+    st.subheader("🏆 Tabel Hasil Lengkap (Top Matches Detail)")
 
-    df_sorted = df.drop_duplicates(subset=["employee_id"]).sort_values("final_match_rate", ascending=False)
-    df_display = df_sorted[["fullname", "position_name", "directorate", "grade", "final_match_rate"]]
+    display_cols = [
+        "fullname", "position_name", "directorate", "grade",
+        "tgv_name", "tv_name", "baseline_score", "user_score",
+        "tv_match_rate", "tgv_match_rate", "final_match_rate"
+    ]
 
+    available_cols = [c for c in display_cols if c in df.columns]
+    df_display = df[available_cols].copy()
+
+    # Final Match Rate tampilkan seperti progress bar %
     st.dataframe(
-        df_display.head(20),
+        df_display.head(50),
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -143,13 +173,13 @@ if submit:
     with col1:
         st.write("Distribusi Final Match Rate")
         fig, ax = plt.subplots()
-        sns.histplot(df_sorted["final_match_rate"], bins=10, kde=True, color="skyblue", ax=ax)
+        sns.histplot(df["final_match_rate"], bins=10, kde=True, color="skyblue", ax=ax)
         st.pyplot(fig)
 
     with col2:
         st.write("Rata-rata TGV Match (Top 10 Talent)")
         if "tgv_name" in df.columns:
-            top_10 = df_sorted.head(10)["employee_id"]
+            top_10 = df.sort_values("final_match_rate", ascending=False).head(10)["employee_id"]
             df_top10 = df[df["employee_id"].isin(top_10)]
             avg_tgv = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
             fig2, ax2 = plt.subplots()
@@ -181,7 +211,7 @@ if submit:
             return "[AI tidak mengembalikan hasil]"
 
     # Siapkan konteks AI
-    top_candidates = df_sorted.head(3).to_dict("records")
+    top_candidates = df.sort_values("final_match_rate", ascending=False).head(3).to_dict("records")
     tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
 
     tgv_text = "\n".join([f"- {k}: {v:.1f}%" for k, v in tgv_summary.items()])
