@@ -86,7 +86,7 @@ if submit:
     st.write(f"**Benchmark:** {', '.join(selected_names)}")
 
     # ===================================================================
-    # 6️⃣ FUNGSI SQL SUPABASE
+    # 6️⃣ PANGGIL FUNCTION SUPABASE
     # ===================================================================
     try:
         data = supabase.rpc("get_talent_match_results").execute()
@@ -99,33 +99,27 @@ if submit:
         st.warning("⚠️ Tidak ada hasil match ditemukan.")
         st.stop()
 
-    #DEBUG
-    #st.write(df.head())
-    #st.write(df.columns.tolist())
-   
-    
-
-    # ==============================================================
-    # ✅ NORMALISASI DATA AGAR NONE TIDAK Muncul
     # ===================================================================
-    # Pastikan kolom tidak sensitif terhadap huruf besar
-    df.columns = [c.strip().lower() for c in df.columns]
-
-    # Kadang Supabase mengembalikan null walau ada data
-    for col in ["position_name", "directorate", "grade"]:
-        if col in df.columns:
-            df[col] = df[col].fillna("").replace("None", "").replace("null", "")
-            df[col] = df[col].apply(lambda x: str(x).strip() if x else "Data Tidak Ditemukan")
-
-    # ===================================================================
-    # 7️⃣ HASIL RANK
+    # 7️⃣ TAMPILKAN HASIL LENGKAP
     # ===================================================================
     st.subheader("🏆 Ranked Talent List (Top Matches)")
 
-    df_sorted = df.drop_duplicates(subset=["employee_id"]).sort_values("final_match_rate", ascending=False)
-    df_display = df_sorted[["fullname", "position_name", "directorate", "grade", "final_match_rate"]]
+    # Pastikan nama kolom lowercase agar konsisten
+    df.columns = [c.strip().lower() for c in df.columns]
 
-    st.dataframe(df_display.head(20), use_container_width=True)
+    expected_columns = [
+        "employee_id", "fullname", "directorate", "position_name", "grade",
+        "tgv_name", "tv_name", "baseline_score", "user_score",
+        "tv_match_rate", "tgv_match_rate", "final_match_rate"
+    ]
+
+    # Jika kolom tidak sesuai, tampilkan info untuk debugging
+    missing_cols = [c for c in expected_columns if c not in df.columns]
+    if missing_cols:
+        st.warning(f"⚠️ Kolom berikut tidak ditemukan di hasil SQL: {missing_cols}")
+
+    df_sorted = df.sort_values("final_match_rate", ascending=False)
+    st.dataframe(df_sorted[expected_columns], use_container_width=True)
 
     # ===================================================================
     # 8️⃣ VISUALISASI
