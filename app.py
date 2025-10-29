@@ -34,6 +34,8 @@ def get_employees():
     return {}
 
 employees = get_employees()
+#DEBUG
+st.write(employees)
 if not employees:
     st.error("❌ Tidak ada data karyawan. Periksa tabel 'employees'.")
     st.stop()
