@@ -100,8 +100,8 @@ if submit:
         st.stop()
 
     #DEBUG
-    st.write(df.head())
-    st.write(df.columns.tolist())
+    #st.write(df.head())
+    #st.write(df.columns.tolist())
 
     # ===================================================================
     # ✅ NORMALISASI DATA AGAR NONE TIDAK MUNCUL
