@@ -100,12 +100,25 @@ if submit:
         st.stop()
 
     # ===================================================================
+    # ✅ NORMALISASI DATA AGAR NONE TIDAK MUNCUL
+    # ===================================================================
+    # Pastikan kolom tidak sensitif terhadap huruf besar
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # Kadang Supabase mengembalikan null walau ada data
+    for col in ["position_name", "directorate", "grade"]:
+        if col in df.columns:
+            df[col] = df[col].fillna("").replace("None", "").replace("null", "")
+            df[col] = df[col].apply(lambda x: str(x).strip() if x else "Data Tidak Ditemukan")
+
+    # ===================================================================
     # 7️⃣ HASIL RANK
     # ===================================================================
     st.subheader("🏆 Ranked Talent List (Top Matches)")
 
     df_sorted = df.drop_duplicates(subset=["employee_id"]).sort_values("final_match_rate", ascending=False)
     df_display = df_sorted[["fullname", "position_name", "directorate", "grade", "final_match_rate"]]
+
     st.dataframe(df_display.head(20), use_container_width=True)
 
     # ===================================================================
