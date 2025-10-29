@@ -85,18 +85,103 @@ if submit:
     st.write(f"**Purpose:** {role_purpose}")
     st.write(f"**Benchmark:** {', '.join(selected_names)}")
 
-    # ===================================================================
-    # 6️⃣ FUNGSI SQL SUPABASE
-    # ===================================================================
+    # =========================
+    # DEBUG: Mulai blok debugging (tidak mengubah logic lain)
+    # =========================
+    st.markdown("### 🐞 Debugging Info (AUTOMATIS)")
+    try:
+        # 1. Tampilkan semua employees (konfirmasi)
+        st.write("🔎 [DEBUG] Employees (sample 10)", list(employees.items())[:10])
+
+        # 2. Cek isi tabel talent_benchmarks (terbaru 5)
+        try:
+            res_bench_all = supabase.table("talent_benchmarks").select("*").order("job_vacancy_id", desc=True).limit(10).execute()
+            st.write("🔎 [DEBUG] talent_benchmarks (latest 10)", res_bench_all.data)
+        except Exception as e:
+            st.error(f"🔎 [DEBUG] Gagal fetch talent_benchmarks: {e}")
+
+        # 3. Ambil latest vacancy (mirip CTE Latest_Vacancy)
+        try:
+            latest_vac = supabase.table("talent_benchmarks").select("*").order("job_vacancy_id", desc=True).limit(1).execute()
+            latest_vacancy = latest_vac.data[0] if latest_vac.data else None
+            st.write("🔎 [DEBUG] Latest Vacancy (CTE emulation):", latest_vacancy)
+            if latest_vacancy:
+                st.write("🔎 [DEBUG] selected_talent_ids from latest vacancy:", latest_vacancy.get("selected_talent_ids"))
+        except Exception as e:
+            st.error(f"🔎 [DEBUG] Error getting latest vacancy: {e}")
+
+        # 4. Cek competencies_yearly untuk year=2025 (sample)
+        try:
+            res_comp_2025 = supabase.table("competencies_yearly").select("employee_id, pillar_code, score, year").eq("year", 2025).limit(50).execute()
+            st.write("🔎 [DEBUG] competencies_yearly (2025 sample 50 rows):", res_comp_2025.data)
+            # juga cek count
+            cnt_comp = supabase.table("competencies_yearly").select("employee_id", count="exact").eq("year", 2025).execute()
+            st.write("🔎 [DEBUG] Count competencies_yearly for 2025:", cnt_comp.count if hasattr(cnt_comp, 'count') else "N/A")
+        except Exception as e:
+            st.error(f"🔎 [DEBUG] Error fetching competencies_yearly: {e}")
+
+        # 5. Cek strengths (sample)
+        try:
+            res_strengths = supabase.table("strengths").select("employee_id, theme, rank").limit(100).execute()
+            st.write("🔎 [DEBUG] strengths (sample 100):", res_strengths.data)
+        except Exception as e:
+            st.error(f"🔎 [DEBUG] Error fetching strengths: {e}")
+
+        # 6. Cek dim tables apakah ada mapping id yang invalid (sample counts)
+        try:
+            dim_pos = supabase.table("dim_positions").select("position_id", count="exact").execute()
+            dim_grade = supabase.table("dim_grades").select("grade_id", count="exact").execute()
+            dim_dir = supabase.table("dim_directorate").select("directorate_id", count="exact").execute()
+            st.write("🔎 [DEBUG] dim_positions count:", dim_pos.count if hasattr(dim_pos, 'count') else "N/A")
+            st.write("🔎 [DEBUG] dim_grades count:", dim_grade.count if hasattr(dim_grade, 'count') else "N/A")
+            st.write("🔎 [DEBUG] dim_directorate count:", dim_dir.count if hasattr(dim_dir, 'count') else "N/A")
+        except Exception as e:
+            st.error(f"🔎 [DEBUG] Error fetching dim tables: {e}")
+
+    except Exception as e:
+        st.error(f"🔎 [DEBUG] Error in debug block: {e}")
+
+    # =========================
+    # 6️⃣ FUNGSI SQL SUPABASE (ASLINYA)
+    # =========================
     try:
         data = supabase.rpc("get_talent_match_results").execute()
+
+        # DEBUG: tunjukkan hasil raw RPC sebelum menjadi DataFrame
+        st.write("🔎 [DEBUG] RPC raw result (first 5 elements)", data.data[:5] if getattr(data, "data", None) else data.data)
+
         df = pd.DataFrame(data.data)
+
+        # DEBUG: informasikan shape, columns, dtypes
+        st.write("🔎 [DEBUG] DataFrame shape:", df.shape)
+        st.write("🔎 [DEBUG] DataFrame columns (raw):", df.columns.tolist())
+        try:
+            st.write("🔎 [DEBUG] DataFrame dtypes:", df.dtypes.to_dict())
+        except:
+            pass
     except Exception as e:
         st.error(f"❌ Error function SQL: {e}")
         st.stop()
 
     if df.empty:
         st.warning("⚠️ Tidak ada hasil match ditemukan.")
+        # Tambahkan debug tambahan mengapa kosong: periksa apakah selected_ids exist & apakah competencies/strength kosong
+        try:
+            # Periksa kembali last benchmark dan selected_ids
+            last_bench = supabase.table("talent_benchmarks").select("*").order("job_vacancy_id", desc=True).limit(1).execute()
+            st.write("🔎 [DEBUG] Re-check latest benchmark:", last_bench.data)
+        except Exception as e:
+            st.error(f"🔎 [DEBUG] Error re-checking benchmark: {e}")
+
+        try:
+            # Cek sample competencies dan strengths counts
+            comp_cnt = supabase.table("competencies_yearly").select("employee_id", count="exact").eq("year", 2025).execute()
+            str_cnt = supabase.table("strengths").select("employee_id", count="exact").execute()
+            st.write("🔎 [DEBUG] competencies_yearly count (2025):", comp_cnt.count if hasattr(comp_cnt, 'count') else "N/A")
+            st.write("🔎 [DEBUG] strengths count:", str_cnt.count if hasattr(str_cnt, 'count') else "N/A")
+        except Exception as e:
+            st.error(f"🔎 [DEBUG] Error counting competencies/strengths: {e}")
+
         st.stop()
 
     #DEBUG
