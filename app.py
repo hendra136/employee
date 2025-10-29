@@ -1,195 +1,142 @@
 import streamlit as st
-from supabase import create_client
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import requests
+from supabase import create_client, Client
+import google.generativeai as genai
 
-# =======================================================================
-# 1️⃣ SETUP
-# =======================================================================
-st.set_page_config(layout="wide", page_title="Talent Match Intelligence System")
+# ==============================
+# 1️⃣ KONFIGURASI DASAR
+# ==============================
+st.set_page_config(page_title="🚀 Talent Match Intelligence System", layout="wide")
+
+url = st.secrets["supabase"]["url"]
+key = st.secrets["supabase"]["key"]
+supabase: Client = create_client(url, key)
+
+genai.configure(api_key=st.secrets["gemini"]["api_key"])
+MODEL = "gemini-2.5-flash"
+
+# ==============================
+# 2️⃣ FUNGSI BANTUAN
+# ==============================
+
+def get_talent_match_results():
+    """Ambil data hasil kecocokan dari Supabase function"""
+    try:
+        response = supabase.rpc("get_talent_match_results").execute()
+        if not response.data:
+            st.warning("⚠️ Tidak ada data hasil kecocokan ditemukan.")
+            return pd.DataFrame()
+        df = pd.DataFrame(response.data)
+
+        # --- Normalisasi kolom agar sesuai ---
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        rename_map = {
+            "fullname": "fullname",
+            "position": "position_name",
+            "positionname": "position_name",
+            "position_name": "position_name",
+            "grade": "grade",
+            "grade_name": "grade",
+            "directorate": "directorate",
+            "directorate_name": "directorate",
+        }
+        df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}, inplace=True)
+
+        # Pastikan kolom wajib selalu ada
+        for col in ["fullname", "position_name", "grade", "directorate", "final_match_rate"]:
+            if col not in df.columns:
+                df[col] = None
+
+        # Bersihkan nilai kosong
+        df["position_name"] = df["position_name"].fillna("Tidak Ditemukan")
+        df["grade"] = df["grade"].fillna("Tidak Ditemukan")
+        df["directorate"] = df["directorate"].fillna("Tidak Ditemukan")
+
+        return df
+    except Exception as e:
+        st.error(f"❌ Error mengambil data match results: {e}")
+        return pd.DataFrame()
+
+
+def generate_ai_summary(prompt_text: str) -> str:
+    """Gunakan Google Gemini untuk membuat ringkasan AI"""
+    try:
+        model = genai.GenerativeModel(MODEL)
+        response = model.generate_content(prompt_text)
+        return response.text
+    except Exception as e:
+        return f"[AI Error] {e}"
+
+
+# ==============================
+# 3️⃣ UI: INPUT DATA
+# ==============================
 st.title("🚀 Talent Match Intelligence System")
-st.caption("Menemukan talenta terbaik berdasarkan benchmark, kompetensi, dan insight AI (Gemini 2.5).")
+st.write("Gunakan sistem ini untuk menganalisis kecocokan talent berdasarkan benchmark & insight AI.")
 
-# =======================================================================
-# 2️⃣ KONEKSI SUPABASE
-# =======================================================================
-try:
-    SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as e:
-    st.error(f"❌ Gagal konek ke Supabase: {e}")
-    st.stop()
-
-# =======================================================================
-# 3️⃣ DATA KARYAWAN
-# =======================================================================
-@st.cache_data(ttl=3600)
-def get_employees():
-    res = supabase.table("employees").select("employee_id, fullname").execute()
-    if res.data:
-        return {emp["employee_id"]: emp["fullname"] for emp in sorted(res.data, key=lambda x: x["fullname"])}
-    return {}
-
-employees = get_employees()
-if not employees:
-    st.error("❌ Tidak ada data karyawan. Periksa tabel 'employees'.")
-    st.stop()
-
-# =======================================================================
-# 4️⃣ FORM INPUT BENCHMARK
-# =======================================================================
-with st.form("form_benchmark"):
-    st.subheader("1️⃣ Role Information")
-    role_name = st.text_input("Role Name")
+with st.form("role_form"):
+    st.subheader("📋 Role Information")
+    role_name = st.text_input("Role Name", placeholder="Contoh: Data Analyst")
     job_level = st.selectbox("Job Level", ["Staff", "Supervisor", "Manager", "Senior Manager"])
-    role_purpose = st.text_area("Role Purpose", placeholder="Tujuan utama role...")
+    role_purpose = st.text_area("Role Purpose", placeholder="Tuliskan tujuan dari role ini...")
 
-    st.subheader("2️⃣ Employee Benchmarking")
-    selected_names = st.multiselect(
-        "Pilih Karyawan Benchmark (maksimal 3)",
-        options=list(employees.values()),
-        max_selections=3
+    st.subheader("👥 Employee Benchmarking")
+    benchmark_employees = st.multiselect(
+        "Pilih Benchmark Employee (1–3 orang)",
+        [r["fullname"] for r in supabase.table("employees").select("fullname").execute().data],
     )
 
-    submit = st.form_submit_button("✨ Find Matches")
+    submitted = st.form_submit_button("✨ Find Matches")
 
-# =======================================================================
-# 5️⃣ PROSES BENCHMARK
-# =======================================================================
-if submit:
-    if not (role_name and job_level and role_purpose and selected_names):
-        st.error("Isi semua field dengan benar.")
-        st.stop()
+# ==============================
+# 4️⃣ LOGIKA UTAMA
+# ==============================
+if submitted:
+    if not role_name or not benchmark_employees:
+        st.warning("⚠️ Mohon lengkapi seluruh form terlebih dahulu.")
+    else:
+        st.success("✅ Benchmark berhasil disimpan!")
 
-    st.info("🔄 Memproses data benchmark...")
+        st.markdown(f"""
+        ### 📄 Role Profile Summary
+        **Role Name:** {role_name}  
+        **Job Level:** {job_level}  
+        **Role Purpose:** {role_purpose}  
+        **Benchmark Employees:** {", ".join(benchmark_employees)}
+        """)
 
-    id_map = {v: k for k, v in employees.items()}
-    selected_ids = [id_map[n] for n in selected_names]
+        # Ambil hasil match dari Supabase
+        df_ranked = get_talent_match_results()
+        if not df_ranked.empty:
+            st.markdown("### 🏆 Ranked Talent List (Top Matches)")
+            df_ranked["final_match_rate"] = df_ranked["final_match_rate"].fillna(0).astype(float)
+            df_ranked = df_ranked.sort_values("final_match_rate", ascending=False)
 
-    insert = supabase.table("talent_benchmarks").insert({
-        "role_name": role_name,
-        "job_level": job_level,
-        "role_purpose": role_purpose,
-        "selected_talent_ids": selected_ids
-    }).execute()
+            def progress_bar(rate):
+                bar = "█" * int(rate / 10)
+                return f"{bar} {rate:.1f}%"
 
-    if not insert.data:
-        st.error("❌ Gagal menyimpan benchmark.")
-        st.stop()
+            df_display = df_ranked[
+                ["fullname", "position_name", "grade", "directorate", "final_match_rate"]
+            ].copy()
+            df_display["Match Rate"] = df_display["final_match_rate"].apply(progress_bar)
+            st.dataframe(df_display, use_container_width=True)
 
-    st.success("✅ Benchmark berhasil disimpan!")
-    st.write(f"**Role:** {role_name} ({job_level})")
-    st.write(f"**Purpose:** {role_purpose}")
-    st.write(f"**Benchmark:** {', '.join(selected_names)}")
+            # ==============================
+            # 5️⃣ AI INSIGHT (Gemini)
+            # ==============================
+            st.subheader("🤖 AI Talent Insights")
 
-    # ===================================================================
-    # 6️⃣ FUNGSI SQL SUPABASE
-    # ===================================================================
-    try:
-        data = supabase.rpc("get_talent_match_results").execute()
-        df = pd.DataFrame(data.data)
-    except Exception as e:
-        st.error(f"❌ Error function SQL: {e}")
-        st.stop()
+            with st.spinner("🔍 Menganalisis dengan Google Gemini..."):
+                prompt_summary = f"""
+                Buat ringkasan analisis AI tentang role {role_name} level {job_level}
+                dengan tujuan: {role_purpose}.
+                Berdasarkan hasil match rate berikut:
+                {df_ranked.head(5).to_string(index=False)}
+                """
+                ai_summary = generate_ai_summary(prompt_summary)
+                st.markdown(f"### 🧠 AI-Generated Summary\n{ai_summary}")
 
-    if df.empty:
-        st.warning("⚠️ Tidak ada hasil match ditemukan.")
-        st.stop()
-
-    # ===================================================================
-    # 7️⃣ HASIL RANK
-    # ===================================================================
-    st.subheader("🏆 Ranked Talent List (Top Matches)")
-
-    df_sorted = df.drop_duplicates(subset=["employee_id"]).sort_values("final_match_rate", ascending=False)
-    df_display = df_sorted[["fullname", "position_name", "directorate", "grade", "final_match_rate"]]
-    st.dataframe(df_display.head(20), use_container_width=True)
-
-    # ===================================================================
-    # 8️⃣ VISUALISASI
-    # ===================================================================
-    st.subheader("📊 Dashboard Match Overview")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.write("Distribusi Final Match Rate")
-        fig, ax = plt.subplots()
-        sns.histplot(df_sorted["final_match_rate"], bins=10, kde=True, color="skyblue", ax=ax)
-        st.pyplot(fig)
-
-    with col2:
-        st.write("Rata-rata TGV Match (Top 10 Talent)")
-        if "tgv_name" in df.columns:
-            top_10 = df_sorted.head(10)["employee_id"]
-            df_top10 = df[df["employee_id"].isin(top_10)]
-            avg_tgv = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
-            fig2, ax2 = plt.subplots()
-            sns.barplot(data=avg_tgv, y="tgv_name", x="tgv_match_rate", ax=ax2)
-            st.pyplot(fig2)
-
-    # ===================================================================
-    # 9️⃣ FITUR AI GOOGLE GEMINI 2.5
-    # ===================================================================
-    st.subheader("🤖 AI Talent Insights")
-
-    GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)
-    MODEL = "gemini-2.5-flash"
-
-    def call_gemini(prompt):
-        if not GOOGLE_API_KEY:
-            return "[AI Error: GOOGLE_API_KEY tidak ditemukan]"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GOOGLE_API_KEY}"
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        res = requests.post(url, headers={"Content-Type": "application/json"}, json=payload)
-        if res.status_code != 200:
-            return f"[AI Error {res.status_code}] {res.text}"
-        data = res.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except:
-            return "[AI tidak mengembalikan hasil]"
-
-    # Siapkan konteks AI
-    top_candidates = df_sorted.head(3).to_dict("records")
-    tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
-
-    tgv_text = "\n".join([f"- {k}: {v:.1f}%" for k, v in tgv_summary.items()])
-    candidates_text = "\n".join([f"{i+1}. {c['fullname']} ({c['final_match_rate']:.1f}%)" for i, c in enumerate(top_candidates)])
-
-    prompt_profile = f"""
-Buatkan profil pekerjaan untuk role {role_name} dengan tujuan {role_purpose}.
-Gunakan data berikut:
-{tgv_text}
-Tuliskan dalam 3 bagian:
-1. Job Requirements
-2. Job Description
-3. Key Competencies
-"""
-
-    prompt_formula = f"""
-Dari data TGV berikut:
-{tgv_text}
-Buatkan rumus 'Success Formula' dengan bobot yang masuk akal seperti:
-SuccessScore = 0.4*TGV_A + 0.3*TGV_B + 0.3*TGV_C
-Sertakan penjelasan singkat.
-"""
-
-    prompt_candidates = f"""
-Berikut 3 kandidat terbaik:
-{candidates_text}
-Berikan alasan singkat kenapa mereka cocok untuk role {role_name}.
-"""
-
-    with st.expander("🧠 AI-Generated Job Profile", expanded=True):
-        st.write(call_gemini(prompt_profile))
-
-    with st.expander("⚖️ AI Success Formula"):
-        st.write(call_gemini(prompt_formula))
-
-    with st.expander("🏆 AI Candidate Insights"):
-        st.write(call_gemini(prompt_candidates))
-
-    st.success("✅ Semua fitur berjalan dengan baik!")
+        else:
+            st.warning("Tidak ada hasil match ditemukan.")
