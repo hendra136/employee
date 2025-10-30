@@ -1,4 +1,4 @@
-# Prototipe Sistem Intelijen Pencocokan Talenta
+# Prototipe AI-Powered Talent Matching 
 
 Ini adalah prototipe aplikasi web yang dibangun dengan Streamlit dan Supabase untuk *case study* analitik. Aplikasi ini mengimplementasikan algoritma pencocokan talenta berdasarkan *benchmark* yang dipilih pengguna.
 
