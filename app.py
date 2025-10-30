@@ -119,8 +119,7 @@ if submit:
         st.warning(f"⚠️ Kolom berikut tidak ditemukan di hasil SQL: {missing_cols}")
 
     df_sorted = df.sort_values("final_match_rate", ascending=False)
-    st.dataframe(df_filtered[expected_columns], use_container_width=True)
-
+    st.dataframe(df_sorted[expected_columns], use_container_width=True)
 
     # ===================================================================
     # 8️⃣ VISUALISASI
@@ -167,16 +166,7 @@ if submit:
             return "[AI tidak mengembalikan hasil]"
 
     # Siapkan konteks AI
-    
-    # <-- START PERBAIKAN -->
-    # Buat dataframe unik berdasarkan employee_id. Karena df_sorted sudah diurutkan,
-    # ini akan mengambil skor 'final_match_rate' tertinggi untuk setiap karyawan.
-    df_unique_employees = df_sorted.drop_duplicates(subset=['employee_id'], keep='first')
-    
-    # Ambil 3 KARYAWAN UNIK teratas, bukan 3 BARIS teratas
-    top_candidates = df_unique_employees.head(3).to_dict("records")
-    # <-- END PERBAIKAN -->
-    
+    top_candidates = df_sorted.head(3).to_dict("records")
     tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
 
     tgv_text = "\n".join([f"- {k}: {v:.1f}%" for k, v in tgv_summary.items()])
@@ -203,7 +193,7 @@ Sertakan penjelasan singkat.
     prompt_candidates = f"""
 Berikut 3 kandidat terbaik:
 {candidates_text}
-Berikan alasan singkat kenapa mereka cocok untuk role {role_name}.
+Berikan alasan singkat dan mendalam kenapa mereka cocok untuk role {role_name}.
 """
 
     with st.expander("🧠 AI-Generated Job Profile", expanded=True):
