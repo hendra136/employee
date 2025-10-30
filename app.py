@@ -140,7 +140,7 @@ if submit:
             df_top10 = df[df["employee_id"].isin(top_10)]
             avg_tgv = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
             fig2, ax2 = plt.subplots()
-            sns.barplot(data=avg_csv, y="tgv_name", x="tgv_match_rate", ax=ax2)
+            sns.barplot(data=avg_tgv, y="tgv_name", x="tgv_match_rate", ax=ax2)
             st.pyplot(fig2)
 
     # ===================================================================
@@ -166,21 +166,10 @@ if submit:
             return "[AI tidak mengembalikan hasil]"
 
     # Siapkan konteks AI
-    
-    # <-- START PERUBAHAN -->
-    # Buat DataFrame unik (satu baris per karyawan) untuk mendapatkan top 3 NAMA yang berbeda
-    # Kita gunakan drop_duplicates pada 'employee_id'. Karena df_sorted sudah diurutkan,
-    # ini akan menyimpan baris PERTAMA (skor tertinggi) untuk setiap karyawan.
-    df_unique_top_employees = df_sorted.drop_duplicates(subset=['employee_id'])
-    
-    # Sekarang, ambil top 3 dari DataFrame unik tersebut
-    top_candidates = df_unique_top_employees.head(3).to_dict("records")
-    # <-- END PERUBAHAN -->
-    
+    top_candidates = df_sorted.head(3).to_dict("records")
     tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
 
     tgv_text = "\n".join([f"- {k}: {v:.1f}%" for k, v in tgv_summary.items()])
-    # Baris ini sekarang akan berfungsi dengan benar menggunakan `top_candidates` yang baru
     candidates_text = "\n".join([f"{i+1}. {c['fullname']} ({c['final_match_rate']:.1f}%)" for i, c in enumerate(top_candidates)])
 
     prompt_profile = f"""
@@ -204,7 +193,7 @@ Sertakan penjelasan singkat.
     prompt_candidates = f"""
 Berikut 3 kandidat terbaik:
 {candidates_text}
-Berikan alasan singkat kenapa mereka cocok untuk role {role_name}.
+Berikan alasan singkat dan mendalam kenapa mereka cocok untuk role {role_name}.
 """
 
     with st.expander("🧠 AI-Generated Job Profile", expanded=True):
