@@ -80,6 +80,4 @@ cd [NAMA_REPOSITORI_ANDA]
 ```bash
 streamlit run app.py
 ```
-* **README.md with setup instructions:** Anda baru saja membuatnya.
-* **Analysis:** Aman tersimpan **HANYA** di dalam Laporan PDF yang Anda kumpulkan.
-```
+
