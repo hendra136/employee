@@ -119,38 +119,6 @@ if submit:
         st.warning(f"⚠️ Kolom berikut tidak ditemukan di hasil SQL: {missing_cols}")
 
     df_sorted = df.sort_values("final_match_rate", ascending=False)
-    
-    # <-- START PERUBAHAN FILTER (dari permintaan Anda sebelumnya) -->
-    
-    # Dapatkan daftar unik karyawan yang sudah diurutkan
-    top_employees = df_sorted['employee_id'].unique()
-
-    # Buat widget radio
-    filter_option = st.radio(
-        "Tampilkan Karyawan Teratas:",
-        options=["Top 10", "Top 50", "Top 100", "Tampilkan Semua"],
-        horizontal=True,
-        index=0  # Default ke "Top 10"
-    )
-
-    # Tentukan jumlah N karyawan yang akan ditampilkan
-    if filter_option == "Top 10":
-        n_top = 10
-    elif filter_option == "Top 50":
-        n_top = 50
-    elif filter_option == "Top 100":
-        n_top = 100
-    else: # "Tampilkan Semua"
-        n_top = len(top_employees)
-
-    # Ambil ID karyawan yang akan ditampilkan
-    employees_to_show = top_employees[:n_top]
-    
-    # Filter DataFrame utama untuk hanya menyertakan karyawan yang dipilih
-    df_filtered = df_sorted[df_sorted['employee_id'].isin(employees_to_show)]
-    
-    # <-- END PERUBAHAN FILTER -->
-
     st.dataframe(df_filtered[expected_columns], use_container_width=True)
 
 
