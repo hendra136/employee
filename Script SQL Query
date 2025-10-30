@@ -1,0 +1,569 @@
+DOKUMENTASI SCRIPT QUERY STEP 2
+
+1. Tahap Pertama ialah membuat database menggunakan supabase
+2. Tahap selanjutnya adalah mengekstrak data Table dari data induk menjadi data table perSheet. data table perSheet inilah yang akan di import ke supabase.
+   dan di bawah ini merupakan query membuat table. 
+   🏗️ 1. CREATE TABLES – Core Dimensions
+    -- 1.1 Company master
+    CREATE TABLE dim_companies (
+        company_id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL
+    );
+    
+    -- 1.2 Work area / site
+    CREATE TABLE dim_areas (
+        area_id SERIAL PRIMARY KEY,
+        name TEXT
+    );
+    
+    -- 1.3 Position / Role family
+    CREATE TABLE dim_positions (
+        position_id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE
+    );
+    
+    -- 1.4 Department
+    CREATE TABLE dim_departments (
+        department_id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE
+    );
+    
+    -- 1.5 Division
+    CREATE TABLE dim_divisions (
+        division_id SERIAL PRIMARY KEY,
+        name TEXT
+    );
+    
+    -- 1.6 Directorate
+    CREATE TABLE dim_directorates (
+        directorate_id SERIAL PRIMARY KEY,
+        name TEXT
+    );
+    
+    -- 1.7 Job grade / band
+    CREATE TABLE dim_grades (
+        grade_id SERIAL PRIMARY KEY,
+        name TEXT
+    );
+    
+    -- 1.8 Education level
+    CREATE TABLE dim_education (
+        education_id SERIAL PRIMARY KEY,
+        name TEXT
+    );
+    
+    -- 1.9 Field of study
+    CREATE TABLE dim_majors (
+        major_id SERIAL PRIMARY KEY,
+        name TEXT
+    );
+    
+    -- 1.10 Historical competency pillars
+    CREATE TABLE dim_competency_pillars (
+        pillar_code VARCHAR(3) PRIMARY KEY,
+        pillar_label TEXT
+    );
+
+  👤 2. CREATE TABLES – Core Entities / Facts
+    -- 2.1 Employee master
+    CREATE TABLE employees (
+        employee_id TEXT PRIMARY KEY,
+        fullname TEXT,
+        nik_baru TEXT,
+        company_id INT REFERENCES dim_companies(company_id),
+        area_id INT REFERENCES dim_areas(area_id),
+        position_id INT REFERENCES dim_positions(position_id),
+        department_id INT REFERENCES dim_departments(department_id),
+        division_id INT REFERENCES dim_divisions(division_id),
+        directorate_id INT REFERENCES dim_directorates(directorate_id),
+        grade_id INT REFERENCES dim_grades(grade_id),
+        education_id INT REFERENCES dim_education(education_id),
+        major_id INT REFERENCES dim_majors(major_id),
+        years_of_service_months INT
+    );
+    
+    -- 2.2 Psychometric profile
+    CREATE TABLE profiles_psych (
+        employee_id TEXT PRIMARY KEY REFERENCES employees(employee_id),
+        pauli NUMERIC,
+        faxtor NUMERIC,
+        disc TEXT,
+        first_char TEXT,
+        second_char TEXT,
+        first_word TEXT,
+        second_word TEXT,
+        disc_word TEXT,
+        enneagram INT,
+        mbti TEXT,
+        iq NUMERIC,
+        gtq1 INT,
+        gtq2 INT,
+        gtq3 INT,
+        gtq4 INT,
+        gtq5 INT,
+        gtq_total INT,
+        tiki1 INT,
+        tiki2 INT,
+        tiki3 INT,
+        tiki4 INT
+    );
+    
+    -- 2.3 PAPI scores
+    CREATE TABLE papi_scores (
+        employee_id TEXT REFERENCES employees(employee_id),
+        scale_code TEXT,
+        score INT,
+        PRIMARY KEY (employee_id, scale_code)
+    );
+    
+    -- 2.4 CliftonStrengths themes
+    CREATE TABLE strengths (
+        employee_id TEXT REFERENCES employees(employee_id),
+        rank INT,
+        theme TEXT,
+        PRIMARY KEY (employee_id, rank)
+    );
+    
+    -- 2.5 Yearly performance
+    CREATE TABLE performance_yearly (
+        employee_id TEXT REFERENCES employees(employee_id),
+        year INT,
+        rating INT,
+        PRIMARY KEY (employee_id, year)
+    );
+    
+    -- 2.6 Historical competency ratings
+    CREATE TABLE competencies_yearly (
+        employee_id TEXT REFERENCES employees(employee_id),
+        pillar_code VARCHAR(3) REFERENCES dim_competency_pillars(pillar_code),
+        year INT,
+        score INT,
+        PRIMARY KEY (employee_id, pillar_code, year)
+    );
+    
+    -- 2.7 Employee archetypes
+    CREATE TABLE employee_archetypes (
+        employee_id TEXT REFERENCES employees(employee_id),
+        archetype_code TEXT,
+        PRIMARY KEY (employee_id, archetype_code)
+    );
+
+
+    🔗 3. ESTABLISH RELATIONSHIPS (PK & FK integrity check)
+    -- Verifikasi hubungan antar tabel
+    ALTER TABLE employees
+        ADD CONSTRAINT fk_employees_company FOREIGN KEY (company_id) REFERENCES dim_companies(company_id),
+        ADD CONSTRAINT fk_employees_area FOREIGN KEY (area_id) REFERENCES dim_areas(area_id),
+        ADD CONSTRAINT fk_employees_position FOREIGN KEY (position_id) REFERENCES dim_positions(position_id),
+        ADD CONSTRAINT fk_employees_department FOREIGN KEY (department_id) REFERENCES dim_departments(department_id),
+        ADD CONSTRAINT fk_employees_division FOREIGN KEY (division_id) REFERENCES dim_divisions(division_id),
+        ADD CONSTRAINT fk_employees_directorate FOREIGN KEY (directorate_id) REFERENCES dim_directorates(directorate_id),
+        ADD CONSTRAINT fk_employees_grade FOREIGN KEY (grade_id) REFERENCES dim_grades(grade_id),
+        ADD CONSTRAINT fk_employees_education FOREIGN KEY (education_id) REFERENCES dim_education(education_id),
+        ADD CONSTRAINT fk_employees_major FOREIGN KEY (major_id) REFERENCES dim_majors(major_id);
+
+      🏗️ 1. CREATE TABLES – talent_Benchmark, talent_benchmark config dan talent_match_result
+      talent_Benchmark
+        -- Create table for talent benchmark (baseline competency standard)
+        CREATE TABLE talent_benchmark (
+            benchmark_id SERIAL PRIMARY KEY,
+            position_id INT REFERENCES dim_positions(position_id),
+            tgv_name TEXT,     -- e.g. 'Vision', 'Operation', 'Leadership'
+            tv_name TEXT,      -- e.g. 'Competency_CEX', 'Competency_OPEX'
+            baseline_score NUMERIC(5,2) CHECK (baseline_score >= 0 AND baseline_score <= 5)
+        );
+        
+        🔗 Relasi talent_benchmark dengan View Lain
+        CREATE OR REPLACE VIEW vw_competency_scores AS
+        SELECT
+            e.employee_id,
+            e.fullname,
+            p.name AS position_name,
+            d.name AS directorate,
+            g.name AS grade,
+            tb.tgv_name,
+            tb.tv_name,
+            tb.baseline_score,
+            us.user_score
+        FROM employees e
+        LEFT JOIN dim_positions p ON e.position_id = p.position_id
+        LEFT JOIN dim_directorates d ON e.directorate_id = d.directorate_id
+        LEFT JOIN dim_grades g ON e.grade_id = g.grade_id
+        LEFT JOIN user_scores us ON e.employee_id = us.employee_id AND us.tv_name = tb.tv_name
+        LEFT JOIN talent_benchmark tb ON tb.position_id = e.position_id;
+
+        talent_benchmark config
+                /* ================================================================
+        KUERI UTAMA TALENT MATCH (DELIVERABLE TAHAP 2 - FINAL)
+        ================================================================
+        */
+        
+        /* CTE 1: Mendefinisikan TGV dan TV berdasarkan "Success Formula" Tahap 1 */
+        WITH TGV_Definition AS (
+            SELECT 'Social Intelligence' AS tgv_name, 'Competency_SEA' AS tv_name, 'competency' AS tv_type
+            UNION ALL SELECT 'Social Intelligence', 'Strength_Empathy', 'strength'
+            UNION ALL SELECT 'Social Intelligence', 'Strength_Communication', 'strength'
+            UNION ALL SELECT 'Discipline', 'Competency_QDD', 'competency'
+            UNION ALL SELECT 'Discipline', 'Strength_Discipline', 'strength'
+            UNION ALL SELECT 'Vision', 'Competency_CEX', 'competency'
+            UNION ALL SELECT 'Vision', 'Strength_Futuristic', 'strength'
+            UNION ALL SELECT 'Vision', 'Strength_Activator', 'strength'
+        ),
+        
+        /* CTE 2: Mengambil lowongan & benchmark karyawan terakhir */
+        Latest_Vacancy AS (
+            SELECT job_vacancy_id, selected_talent_ids
+            FROM talent_benchmarks
+            ORDER BY job_vacancy_id DESC
+            LIMIT 1
+        ),
+        
+        /* CTE 3: Mengambil ID karyawan benchmark */
+        Benchmark_Employee_IDs AS (
+            SELECT unnest(selected_talent_ids) AS employee_id
+            FROM Latest_Vacancy
+        ),
+        
+        /* CTE 4: Mengumpulkan semua data TV (Talent Variable) untuk semua karyawan */
+        All_Employee_TV_Scores AS (
+            /* 4a: Skor Kompetensi (data numerik 1–5) */
+            SELECT 
+                c.employee_id,
+                CASE 
+                    WHEN c.pillar_code = 'SEA' THEN 'Competency_SEA'
+                    WHEN c.pillar_code = 'QDD' THEN 'Competency_QDD'
+                    WHEN c.pillar_code = 'CEX' THEN 'Competency_CEX'
+                END AS tv_name,
+                NULLIF(c.score, '')::NUMERIC AS user_score
+            FROM competencies_yearly c
+            WHERE c.year = 2025
+              AND c.pillar_code IN ('SEA', 'QDD', 'CEX')
+        
+            UNION ALL
+        
+            /* 4b: Skor Strengths (data kategorikal 0 atau 1) */
+            SELECT e.employee_id,
+                   'Strength_Empathy' AS tv_name,
+                   MAX(CASE WHEN s.theme = 'Empathy' THEN 1 ELSE 0 END)::NUMERIC AS user_score
+            FROM employees e
+            LEFT JOIN strengths s ON e.employee_id = s.employee_id AND s.rank <= 5
+            GROUP BY e.employee_id
+            UNION ALL
+            SELECT e.employee_id,
+                   'Strength_Communication' AS tv_name,
+                   MAX(CASE WHEN s.theme = 'Communication' THEN 1 ELSE 0 END)::NUMERIC AS user_score
+            FROM employees e
+            LEFT JOIN strengths s ON e.employee_id = s.employee_id AND s.rank <= 5
+            GROUP BY e.employee_id
+            UNION ALL
+            SELECT e.employee_id,
+                   'Strength_Discipline' AS tv_name,
+                   MAX(CASE WHEN s.theme = 'Discipline' THEN 1 ELSE 0 END)::NUMERIC AS user_score
+            FROM employees e
+            LEFT JOIN strengths s ON e.employee_id = s.employee_id AND s.rank <= 5
+            GROUP BY e.employee_id
+            UNION ALL
+            SELECT e.employee_id,
+                   'Strength_Futuristic' AS tv_name,
+                   MAX(CASE WHEN s.theme = 'Futuristic' THEN 1 ELSE 0 END)::NUMERIC AS user_score
+            FROM employees e
+            LEFT JOIN strengths s ON e.employee_id = s.employee_id AND s.rank <= 5
+            GROUP BY e.employee_id
+            UNION ALL
+            SELECT e.employee_id,
+                   'Strength_Activator' AS tv_name,
+                   MAX(CASE WHEN s.theme = 'Activator' THEN 1 ELSE 0 END)::NUMERIC AS user_score
+            FROM employees e
+            LEFT JOIN strengths s ON e.employee_id = s.employee_id AND s.rank <= 5
+            GROUP BY e.employee_id
+        ),
+        
+        /* CTE 5: Menyaring skor TV hanya untuk karyawan benchmark */
+        Benchmark_TV_Scores AS (
+            SELECT tv.tv_name, tv.user_score
+            FROM All_Employee_TV_Scores tv
+            JOIN Benchmark_Employee_IDs b ON tv.employee_id = b.employee_id
+        ),
+        
+        /* CTE 6: Menghitung skor 'ideal' (Median) dari benchmark */
+        TV_Benchmark_Median AS (
+            SELECT 
+                tv_name,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY user_score) AS baseline_score
+            FROM Benchmark_TV_Scores
+            GROUP BY tv_name
+        ),
+        
+        /* CTE 7: Menghitung TV Match Rate (Skor Karyawan vs Skor Ideal) */
+        TV_Match_Rates AS (
+            SELECT
+                e.employee_id,
+                def.tgv_name,
+                def.tv_name,
+                COALESCE(b.baseline_score, 0) AS baseline_score,
+                COALESCE(a.user_score, 0) AS user_score,
+                def.tv_type,
+                CASE
+                    WHEN def.tv_type = 'strength' THEN
+                        CASE 
+                            WHEN COALESCE(a.user_score, 0) >= COALESCE(b.baseline_score, 1) THEN 100.0
+                            ELSE 0.0 
+                        END
+                    WHEN def.tv_type = 'competency' AND COALESCE(b.baseline_score, 0) > 0 THEN
+                        LEAST( (COALESCE(a.user_score, 0) / b.baseline_score) * 100.0, 100.0 )
+                    ELSE 0.0
+                END AS tv_match_rate
+            FROM TGV_Definition def
+            CROSS JOIN employees e
+            LEFT JOIN All_Employee_TV_Scores a ON def.tv_name = a.tv_name AND e.employee_id = a.employee_id
+            LEFT JOIN TV_Benchmark_Median b ON def.tv_name = b.tv_name
+        ),
+        
+        /* CTE 8: Menghitung TGV Match Rate (rata-rata skor TV di dalam TGV) */
+        TGV_Match_Rates AS (
+            SELECT employee_id, tgv_name, AVG(tv_match_rate) AS tgv_match_rate
+            FROM TV_Match_Rates
+            GROUP BY employee_id, tgv_name
+        ),
+        
+        /* CTE 9: Menghitung Final Match Rate (rata-rata skor TGV) */
+        Final_Match_Rate AS (
+            SELECT employee_id, AVG(tgv_match_rate) AS final_match_rate
+            FROM TGV_Match_Rates
+            GROUP BY employee_id
+        )
+        
+        /* FINAL OUTPUT: Menampilkan tabel hasil akhir sesuai dokumen */
+        SELECT 
+            e.employee_id,
+            e.fullname,
+            dd.name AS directorate, /* <-- INI TAMBAHANNYA */
+            dp.name AS "role", /* "role" adalah kata kunci SQL, jadi gunakan tanda kutip */
+            dg.name AS grade,
+            tv.tgv_name,
+            tv.tv_name,
+            tv.baseline_score,
+            tv.user_score,
+            tv.tv_match_rate,
+            tgv.tgv_match_rate,
+            f.final_match_rate
+        FROM 
+            employees e
+        LEFT JOIN 
+            dim_positions dp ON e.position_id = dp.position_id
+        LEFT JOIN 
+            dim_grades dg ON e.grade_id = dg.grade_id
+        LEFT JOIN 
+            dim_directorate dd ON e.directorate_id = dd.directorate_id /* <-- INI TAMBAHANNYA */
+        LEFT JOIN 
+            TV_Match_Rates tv ON e.employee_id = tv.employee_id
+        LEFT JOIN 
+            TGV_Match_Rates tgv ON e.employee_id = tgv.employee_id AND tv.tgv_name = tgv.tgv_name
+        LEFT JOIN 
+            Final_Match_Rate f ON e.employee_id = f.employee_id
+        ORDER BY 
+            f.final_match_rate DESC NULLS LAST,
+            e.employee_id,
+            tv.tv_name;
+
+
+        talent_match_result
+        CREATE OR REPLACE FUNCTION public.get_talent_match_results()
+        RETURNS TABLE (
+            employee_id TEXT,
+            fullname TEXT,
+            directorate TEXT,
+            position_name TEXT, 
+            grade TEXT,
+            tgv_name TEXT,
+            tv_name TEXT,
+            baseline_score NUMERIC,
+            user_score NUMERIC,
+            tv_match_rate NUMERIC,
+            tgv_match_rate NUMERIC,
+            final_match_rate NUMERIC
+        )
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        AS $$
+        BEGIN
+            RETURN QUERY
+            WITH 
+            -- 1. Definisi TGV & TV, ditambah 'scoring_direction'
+            TGV_Definition AS (
+                SELECT 'Social Intelligence' AS tgv_name, 'Competency_SEA' AS tv_name, 'competency' AS tv_type, 'HIGH' AS scoring_direction
+                UNION ALL SELECT 'Social Intelligence', 'Strength_Empathy', 'strength', 'HIGH'
+                UNION ALL SELECT 'Social Intelligence', 'Strength_Communication', 'strength', 'HIGH'
+                -- Asumsi 'QDD' adalah "lower is better" sebagai CONTOH
+                UNION ALL SELECT 'Discipline', 'Competency_QDD', 'competency', 'LOW' 
+                UNION ALL SELECT 'Discipline', 'Strength_Discipline', 'strength', 'HIGH'
+                UNION ALL SELECT 'Vision', 'Competency_CEX', 'competency', 'HIGH'
+                UNION ALL SELECT 'Vision', 'Strength_Futuristic', 'strength', 'HIGH'
+                UNION ALL SELECT 'Vision', 'Strength_Activator', 'strength', 'HIGH'
+            ),
+            
+            -- 2. Ambil Vacancy TERBARU, sekarang termasuk 'weights_config'
+            Latest_Vacancy AS (
+                SELECT 
+                    lv.job_vacancy_id, 
+                    lv.selected_talent_ids,
+                    lv.weights_config -- Diasumsikan tipe JSONB
+                FROM public.talent_benchmarks lv
+                ORDER BY lv.job_vacancy_id DESC
+                LIMIT 1
+            ),
+        
+            -- 3. Ambil Bobot Kustom untuk TV (default = 1)
+            TV_Weights AS (
+                SELECT 
+                    def.tv_name,
+                    -- Ambil bobot dari JSON, jika tidak ada, gunakan 1.0
+                    COALESCE(
+                        (lv.weights_config->'tv'->>def.tv_name)::NUMERIC, 
+                        1.0
+                    ) AS weight
+                FROM TGV_Definition def, Latest_Vacancy lv
+            ),
+        
+            -- 4. Ambil Bobot Kustom untuk TGV (default = 1)
+            TGV_Weights AS (
+                SELECT 
+                    DISTINCT def.tgv_name,
+                    COALESCE(
+                        (lv.weights_config->'tgv'->>def.tgv_name)::NUMERIC, 
+                        1.0
+                    ) AS weight
+                FROM TGV_Definition def, Latest_Vacancy lv
+            ),
+        
+            Benchmark_Employee_IDs AS (
+                SELECT unnest(lv.selected_talent_ids) AS employee_id
+                FROM Latest_Vacancy lv
+            ),
+            
+            All_Employee_TV_Scores AS (
+                -- (Logika CTE ini sama persis dengan kode 1 Anda, tidak perlu diubah)
+                SELECT c.employee_id,
+                       CASE
+                           WHEN c.pillar_code = 'SEA' THEN 'Competency_SEA'
+                           WHEN c.pillar_code = 'QDD' THEN 'Competency_QDD'
+                           WHEN c.pillar_code = 'CEX' THEN 'Competency_CEX'
+                       END AS tv_name,
+                       NULLIF(c.score, '')::NUMERIC AS user_score
+                FROM public.competencies_yearly c
+                WHERE c.year = 2025 AND c.pillar_code IN ('SEA', 'QDD', 'CEX')
+                UNION ALL
+                SELECT e.employee_id, 'Strength_Empathy' AS tv_name, MAX(CASE WHEN s.theme = 'Empathy' THEN 1 ELSE 0 END)::NUMERIC
+                FROM public.employees e LEFT JOIN public.strengths s ON e.employee_id = s.employee_id AND s.rank <= 5 GROUP BY e.employee_id
+                UNION ALL
+                SELECT e.employee_id, 'Strength_Communication' AS tv_name, MAX(CASE WHEN s.theme = 'Communication' THEN 1 ELSE 0 END)::NUMERIC
+                FROM public.employees e LEFT JOIN public.strengths s ON e.employee_id = s.employee_id AND s.rank <= 5 GROUP BY e.employee_id
+                UNION ALL
+                SELECT e.employee_id, 'Strength_Discipline' AS tv_name, MAX(CASE WHEN s.theme = 'Discipline' THEN 1 ELSE 0 END)::NUMERIC
+                FROM public.employees e LEFT JOIN public.strengths s ON e.employee_id = s.employee_id AND s.rank <= 5 GROUP BY e.employee_id
+                UNION ALL
+                SELECT e.employee_id, 'Strength_Futuristic' AS tv_name, MAX(CASE WHEN s.theme = 'Futuristic' THEN 1 ELSE 0 END)::NUMERIC
+                FROM public.employees e LEFT JOIN public.strengths s ON e.employee_id = s.employee_id AND s.rank <= 5 GROUP BY e.employee_id
+                UNION ALL
+                SELECT e.employee_id, 'Strength_Activator' AS tv_name, MAX(CASE WHEN s.theme = 'Activator' THEN 1 ELSE 0 END)::NUMERIC
+                FROM public.employees e LEFT JOIN public.strengths s ON e.employee_id = s.employee_id AND s.rank <= 5 GROUP BY e.employee_id
+            ),
+            
+            Benchmark_TV_Scores AS (
+                SELECT tv_scores.tv_name, tv_scores.user_score 
+                FROM All_Employee_TV_Scores tv_scores
+                JOIN Benchmark_Employee_IDs b ON tv_scores.employee_id = b.employee_id
+            ),
+            
+            TV_Benchmark_Median AS (
+                SELECT 
+                    bts.tv_name, 
+                    (PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY bts.user_score))::NUMERIC AS baseline_score
+                FROM Benchmark_TV_Scores bts 
+                GROUP BY bts.tv_name 
+            ),
+            
+            -- 5. Hitung TV Match Rate, SEKARANG dengan logika "Lower is Better"
+            TV_Match_Rates AS (
+                SELECT
+                    e.employee_id, 
+                    def.tgv_name, 
+                    def.tv_name, 
+                    COALESCE(b.baseline_score, 0) AS baseline_score,
+                    COALESCE(a.user_score, 0) AS user_score, 
+                    def.tv_type, 
+                    CASE
+                        -- 1. Logika untuk 'strength' (kategorikal)
+                        WHEN def.tv_type = 'strength' THEN
+                            CASE WHEN COALESCE(a.user_score, 0) >= COALESCE(b.baseline_score, 1) THEN 100.0 ELSE 0.0 END
+                        
+                        -- 2. Logika untuk 'competency' (numerik)
+                        WHEN def.tv_type = 'competency' AND COALESCE(b.baseline_score, 0) > 0 THEN
+                            CASE 
+                                -- 2a. Jika 'Lower is Better'
+                                WHEN def.scoring_direction = 'LOW' THEN
+                                    LEAST(GREATEST( ((2 * b.baseline_score - COALESCE(a.user_score, 0)) / b.baseline_score) * 100.0, 0.0), 100.0)
+                                -- 2b. Jika 'Higher is Better' (default)
+                                ELSE 
+                                    LEAST(GREATEST( (COALESCE(a.user_score, 0) / b.baseline_score) * 100.0, 0.0), 100.0)
+                            END
+                        
+                        -- 3. Default
+                        ELSE 0.0
+                    END AS tv_match_rate
+                FROM TGV_Definition def 
+                CROSS JOIN public.employees e
+                LEFT JOIN All_Employee_TV_Scores a ON def.tv_name = a.tv_name AND e.employee_id = a.employee_id
+                LEFT JOIN TV_Benchmark_Median b ON def.tv_name = b.tv_name 
+            ),
+            
+            -- 6. Hitung TGV Match Rate, SEKARANG menggunakan Rata-Rata Tertimbang
+            TGV_Match_Rates AS (
+                SELECT 
+                    tmr.employee_id, 
+                    tmr.tgv_name, 
+                    -- Mengganti AVG() dengan Rata-Rata Tertimbang
+                    SUM(tmr.tv_match_rate * tvw.weight) / SUM(tvw.weight) AS tgv_match_rate
+                FROM TV_Match_Rates tmr
+                JOIN TV_Weights tvw ON tmr.tv_name = tvw.tv_name
+                GROUP BY tmr.employee_id, tmr.tgv_name 
+            ),
+            
+            -- 7. Hitung Final Match Rate, SEKARANG menggunakan Rata-Rata Tertimbang
+            Final_Match_Rate AS (
+                SELECT 
+                    tgvmr.employee_id, 
+                    -- Mengganti AVG() dengan Rata-Rata Tertimbang
+                    SUM(tgvmr.tgv_match_rate * tgvw.weight) / SUM(tgvw.weight) AS final_match_rate
+                FROM TGV_Match_Rates tgvmr
+                JOIN TGV_Weights tgvw ON tgvmr.tgv_name = tgvw.tgv_name
+                GROUP BY tgvmr.employee_id 
+            )
+            
+            -- 8. Final SELECT (Sama seperti sebelumnya, menggabungkan semua hasil)
+            SELECT
+                e.employee_id, 
+                e.fullname, 
+                dd.name AS directorate,
+                dp.name AS position_name, 
+                dg.name AS grade,
+                tv.tgv_name, 
+                tv.tv_name, 
+                tv.baseline_score, 
+                tv.user_score, 
+                tv.tv_match_rate, 
+                tgv.tgv_match_rate, 
+                f.final_match_rate
+            FROM public.employees e
+            LEFT JOIN public.dim_positions dp ON e.position_id = dp.position_id
+            LEFT JOIN public.dim_grades dg ON e.grade_id = dg.grade_id
+            LEFT JOIN public.dim_directorate dd ON e.directorate_id = dd.directorate_id
+            LEFT JOIN TV_Match_Rates tv ON e.employee_id = tv.employee_id 
+            LEFT JOIN TGV_Match_Rates tgv ON e.employee_id = tgv.employee_id AND tv.tgv_name = tgv.tgv_name 
+            LEFT JOIN Final_Match_Rate f ON e.employee_id = f.employee_id
+            ORDER BY f.final_match_rate DESC NULLS LAST, e.employee_id, tv.tv_name;
+        END;
+        $$;
+
+4. Jika ketiga tahap di atas sudah dilakukan. selanjutnya adalah lanjut step Empat membuat Dashboard di Streamlit. pada tahap itulah lebih banyak men testing 
+   query dan database.
