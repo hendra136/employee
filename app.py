@@ -119,7 +119,40 @@ if submit:
         st.warning(f"⚠️ Kolom berikut tidak ditemukan di hasil SQL: {missing_cols}")
 
     df_sorted = df.sort_values("final_match_rate", ascending=False)
-    st.dataframe(df_sorted[expected_columns], use_container_width=True)
+    
+    # <-- START PERUBAHAN FILTER (dari permintaan Anda sebelumnya) -->
+    
+    # Dapatkan daftar unik karyawan yang sudah diurutkan
+    top_employees = df_sorted['employee_id'].unique()
+
+    # Buat widget radio
+    filter_option = st.radio(
+        "Tampilkan Karyawan Teratas:",
+        options=["Top 10", "Top 50", "Top 100", "Tampilkan Semua"],
+        horizontal=True,
+        index=0  # Default ke "Top 10"
+    )
+
+    # Tentukan jumlah N karyawan yang akan ditampilkan
+    if filter_option == "Top 10":
+        n_top = 10
+    elif filter_option == "Top 50":
+        n_top = 50
+    elif filter_option == "Top 100":
+        n_top = 100
+    else: # "Tampilkan Semua"
+        n_top = len(top_employees)
+
+    # Ambil ID karyawan yang akan ditampilkan
+    employees_to_show = top_employees[:n_top]
+    
+    # Filter DataFrame utama untuk hanya menyertakan karyawan yang dipilih
+    df_filtered = df_sorted[df_sorted['employee_id'].isin(employees_to_show)]
+    
+    # <-- END PERUBAHAN FILTER -->
+
+    st.dataframe(df_filtered[expected_columns], use_container_width=True)
+
 
     # ===================================================================
     # 8️⃣ VISUALISASI
@@ -140,7 +173,7 @@ if submit:
             df_top10 = df[df["employee_id"].isin(top_10)]
             avg_tgv = df_top10.groupby("tgv_name")["tgv_match_rate"].mean().reset_index()
             fig2, ax2 = plt.subplots()
-            sns.barplot(data=avg_csv, y="tgv_name", x="tgv_match_rate", ax=ax2)
+            sns.barplot(data=avg_tgv, y="tgv_name", x="tgv_match_rate", ax=ax2)
             st.pyplot(fig2)
 
     # ===================================================================
@@ -167,20 +200,18 @@ if submit:
 
     # Siapkan konteks AI
     
-    # <-- START PERUBAHAN -->
-    # Buat DataFrame unik (satu baris per karyawan) untuk mendapatkan top 3 NAMA yang berbeda
-    # Kita gunakan drop_duplicates pada 'employee_id'. Karena df_sorted sudah diurutkan,
-    # ini akan menyimpan baris PERTAMA (skor tertinggi) untuk setiap karyawan.
-    df_unique_top_employees = df_sorted.drop_duplicates(subset=['employee_id'])
+    # <-- START PERBAIKAN -->
+    # Buat dataframe unik berdasarkan employee_id. Karena df_sorted sudah diurutkan,
+    # ini akan mengambil skor 'final_match_rate' tertinggi untuk setiap karyawan.
+    df_unique_employees = df_sorted.drop_duplicates(subset=['employee_id'], keep='first')
     
-    # Sekarang, ambil top 3 dari DataFrame unik tersebut
-    top_candidates = df_unique_top_employees.head(3).to_dict("records")
-    # <-- END PERUBAHAN -->
+    # Ambil 3 KARYAWAN UNIK teratas, bukan 3 BARIS teratas
+    top_candidates = df_unique_employees.head(3).to_dict("records")
+    # <-- END PERBAIKAN -->
     
     tgv_summary = df.groupby("tgv_name")["tgv_match_rate"].mean().sort_values(ascending=False).to_dict()
 
     tgv_text = "\n".join([f"- {k}: {v:.1f}%" for k, v in tgv_summary.items()])
-    # Baris ini sekarang akan berfungsi dengan benar menggunakan `top_candidates` yang baru
     candidates_text = "\n".join([f"{i+1}. {c['fullname']} ({c['final_match_rate']:.1f}%)" for i, c in enumerate(top_candidates)])
 
     prompt_profile = f"""
